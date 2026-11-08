@@ -1,0 +1,20 @@
+{
+  "name": "lab-store-discord-suite",
+  "version": "2.0.0",
+  "description": "نظام متجر وسيرفر ديسكورد متكامل مع لوحة تحكم وإحصائيات البيع والشراء والتقييمات (Lab Store)",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "socket.io": "^4.8.1"
+  }
+}
