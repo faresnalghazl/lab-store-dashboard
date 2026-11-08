@@ -453,7 +453,7 @@ function getDashboardStats() {
 }
 
 function getAdmins() {
-  return db.prepare('SELECT * FROM site_admins ORDER BY CASE WHEN role = "primary" THEN 0 ELSE 1 END, id ASC').all();
+  return db.prepare(`SELECT * FROM site_admins ORDER BY CASE WHEN role = 'primary' THEN 0 ELSE 1 END, id ASC`).all();
 }
 
 function addAdmin({ discord_id, username = '', avatar = '', note = '', added_by = 'المالك' }) {
