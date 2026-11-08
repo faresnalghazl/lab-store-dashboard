@@ -102,57 +102,86 @@ router.post('/auth/verify-code', async (req, res) => {
   }
 });
 
-// تسجيل الدخول الرسمي عبر Discord OAuth2 (مقتصر على 790676969418522664)
+// تسجيل الدخول الرسمي عبر Discord OAuth2 (يحول لصفحة الديسكورد الرسمية ثم يرجع للموقع)
 router.get('/auth/discord/login', (req, res) => {
-  const clientId = getSetting('client_id') || botManager.client?.user?.id || process.env.CLIENT_ID;
-  if (!clientId) {
-    return res.redirect('/?auth_error=' + encodeURIComponent('يرجى التأكد من اتصال البوت أولاً أو استخدام زر تأكيد الدخول عبر البوت.'));
-  }
-  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/discord/callback`;
-  const url = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=identify`;
+  const clientId = getSetting('client_id') || botManager.client?.user?.id || process.env.CLIENT_ID || '1568960783491014826';
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.get('host');
+  const redirectUri = `${proto}://${host}/api/auth/discord/callback`;
+  const url = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=identify&prompt=consent`;
   res.redirect(url);
 });
 
-router.get('/auth/discord/callback', async (req, res) => {
+router.get('/auth/discord/callback', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>جاري ربط حساب الديسكورد — Lab Store</title>
+  <style>
+    body { background: #0d0d0c; color: #f5f5f2; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .box { background: #181816; padding: 32px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12); max-width: 420px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h3>🔄 جاري التحقق من حساب الديسكورد وتوجيهك للداشبورد...</h3>
+    <p id="statusText" style="color: #a8a8a2; font-size: 14px;">يرجى الانتظار لحظة</p>
+  </div>
+  <script>
+    (async function() {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get('access_token');
+      if (!accessToken) {
+        const q = new URLSearchParams(window.location.search);
+        const err = q.get('error_description') || q.get('error') || 'لم يتم استلام رمز الدخول من الديسكورد';
+        window.location.href = '/?auth_error=' + encodeURIComponent(err);
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/discord-oauth-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken })
+        });
+        const data = await res.json();
+        if (data.ok && data.sessionToken) {
+          localStorage.setItem('labstore_discord_token', data.sessionToken);
+          window.location.href = '/';
+        } else {
+          window.location.href = '/?auth_error=' + encodeURIComponent(data.message || 'فشل التحقق من الحساب');
+        }
+      } catch (e) {
+        window.location.href = '/?auth_error=' + encodeURIComponent('خطأ في الاتصال بالخادم');
+      }
+    })();
+  </script>
+</body>
+</html>`);
+});
+
+router.post('/auth/discord-oauth-verify', async (req, res) => {
   try {
-    const { code } = req.query;
-    if (!code) return res.redirect('/?auth_error=' + encodeURIComponent('لم يتم استلام رمز المصادقة من الديسكورد'));
-
-    const clientId = getSetting('client_id') || botManager.client?.user?.id || process.env.CLIENT_ID;
-    const clientSecret = getSetting('discord_client_secret') || process.env.DISCORD_CLIENT_SECRET;
-    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/discord/callback`;
-
-    if (!clientSecret) {
-      return res.redirect('/?auth_error=' + encodeURIComponent('لم يتم ضبط Discord Client Secret بعد — استخدم زر "تأكيد الدخول الفوري عبر البوت" للدخول مباشرة!'));
-    }
-
-    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: 'authorization_code',
-        code: String(code),
-        redirect_uri: redirectUri
-      })
-    });
-
-    const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) {
-      return res.redirect('/?auth_error=' + encodeURIComponent('فشل التحقق من جلسة OAuth2 مع ديسكورد'));
+    const { accessToken } = req.body;
+    if (!accessToken) {
+      return res.status(400).json({ ok: false, message: 'رمز الوصول مفقود' });
     }
 
     const userRes = await fetch('https://discord.com/api/users/@me', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
     const discordUser = await userRes.json();
 
-    if (!discordUser || discordUser.id !== OWNER_DISCORD_ID) {
-      return res.redirect(
-        '/?auth_error=' +
-          encodeURIComponent(`⛔ غير مصرح بالدخول! هذا الموقع خاص بمالك المتجر فقط (${OWNER_DISCORD_ID}). الحساب الذي حاول الدخول: ${discordUser?.id || 'غير معروف'}`)
-      );
+    if (!userRes.ok || !discordUser || !discordUser.id) {
+      return res.status(401).json({ ok: false, message: 'فشل جلب بيانات الحساب من ديسكورد' });
+    }
+
+    if (discordUser.id !== OWNER_DISCORD_ID) {
+      return res.status(403).json({
+        ok: false,
+        message: `⛔ غير مصرح بالدخول! هذا الموقع خاص بمالك المتجر فقط (${OWNER_DISCORD_ID}). الحساب الذي حاول الدخول: ${discordUser.username} (${discordUser.id})`
+      });
     }
 
     const sessionToken = crypto.randomBytes(24).toString('hex');
@@ -163,9 +192,13 @@ router.get('/auth/discord/callback', async (req, res) => {
     db.prepare('INSERT INTO auth_sessions (token, discord_id, username, avatar) VALUES (?, ?, ?, ?)')
       .run(sessionToken, OWNER_DISCORD_ID, discordUser.username, avatarUrl);
 
-    res.redirect(`/?session_token=${sessionToken}`);
+    res.json({
+      ok: true,
+      sessionToken,
+      user: { id: OWNER_DISCORD_ID, username: discordUser.username, avatar: avatarUrl }
+    });
   } catch (err) {
-    res.redirect('/?auth_error=' + encodeURIComponent(err.message));
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
