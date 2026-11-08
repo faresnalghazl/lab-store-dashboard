@@ -32,6 +32,18 @@ function initDatabase() {
       discord_id TEXT NOT NULL,
       username TEXT DEFAULT '',
       avatar TEXT DEFAULT '',
+      role TEXT DEFAULT 'admin',
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS site_admins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id TEXT UNIQUE NOT NULL,
+      username TEXT DEFAULT '',
+      avatar TEXT DEFAULT '',
+      role TEXT DEFAULT 'admin',
+      note TEXT DEFAULT '',
+      added_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
@@ -169,6 +181,15 @@ function initDatabase() {
   ensureColumn('products', 'button_label', "TEXT DEFAULT ''");
   ensureColumn('products', 'button_emoji', "TEXT DEFAULT '💎'");
   ensureColumn('products', 'button_style', "TEXT DEFAULT 'Secondary'");
+  ensureColumn('auth_sessions', 'role', "TEXT DEFAULT 'admin'");
+
+  // تثبيت المالك الأساسي في جدول الإداريين (غير قابل للحذف)
+  const PRIMARY_OWNER_ID = '790676969418522664';
+  db.prepare(`
+    INSERT INTO site_admins (discord_id, username, role, note, added_by)
+    VALUES (?, 'xfazq', 'primary', 'المالك والإداري الأساسي', 'النظام')
+    ON CONFLICT(discord_id) DO UPDATE SET role = 'primary'
+  `).run(PRIMARY_OWNER_ID);
 
   const defaultSettings = {
     store_name: 'Lab Store',
@@ -431,6 +452,43 @@ function getDashboardStats() {
   };
 }
 
+function getAdmins() {
+  return db.prepare('SELECT * FROM site_admins ORDER BY CASE WHEN role = "primary" THEN 0 ELSE 1 END, id ASC').all();
+}
+
+function addAdmin({ discord_id, username = '', avatar = '', note = '', added_by = 'المالك' }) {
+  const cleanId = String(discord_id || '').trim();
+  if (!cleanId || !/^\d{16,21}$/.test(cleanId)) {
+    throw new Error('معرف الديسكورد (Discord User ID) غير صالح. يجب أن يتكون من 17-20 رقماً.');
+  }
+  const existing = db.prepare('SELECT * FROM site_admins WHERE discord_id = ?').get(cleanId);
+  if (existing) {
+    throw new Error('هذا الحساب مضاف مسبقاً في قائمة الإدارة.');
+  }
+  db.prepare(`
+    INSERT INTO site_admins (discord_id, username, avatar, role, note, added_by)
+    VALUES (?, ?, ?, 'admin', ?, ?)
+  `).run(cleanId, username || '', avatar || '', note || 'إداري متجر', added_by);
+  return db.prepare('SELECT * FROM site_admins WHERE discord_id = ?').get(cleanId);
+}
+
+function removeAdmin(id, operatorDiscordId) {
+  const admin = db.prepare('SELECT * FROM site_admins WHERE id = ?').get(Number(id));
+  if (!admin) throw new Error('الإداري غير موجود.');
+  if (admin.discord_id === '790676969418522664' || admin.role === 'primary') {
+    throw new Error('لا يمكن حذف أو تعديل الإداري الأساسي للمتجر.');
+  }
+  db.prepare('DELETE FROM site_admins WHERE id = ?').run(Number(id));
+  db.prepare('DELETE FROM auth_sessions WHERE discord_id = ?').run(admin.discord_id);
+  return true;
+}
+
+function isAuthorizedAdmin(discord_id) {
+  if (discord_id === '790676969418522664') return true;
+  const admin = db.prepare('SELECT id FROM site_admins WHERE discord_id = ?').get(String(discord_id).trim());
+  return Boolean(admin);
+}
+
 initDatabase();
 
 module.exports = {
@@ -441,5 +499,9 @@ module.exports = {
   addActivityLog,
   getDashboardStats,
   seedDemoData,
-  clearDemoData
+  clearDemoData,
+  getAdmins,
+  addAdmin,
+  removeAdmin,
+  isAuthorizedAdmin
 };
