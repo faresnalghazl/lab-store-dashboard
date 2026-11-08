@@ -9,40 +9,55 @@ const {
   addActivityLog,
   getDashboardStats,
   seedDemoData,
-  clearDemoData
+  clearDemoData,
+  getAdmins,
+  addAdmin,
+  removeAdmin,
+  isAuthorizedAdmin
 } = require('../database/db');
 const botManager = require('../bot/botManager');
 
 const OWNER_DISCORD_ID = '790676969418522664';
 
 // ==========================================================
-// مسارات المصادقة عبر حساب الديسكورد الخاص بالمالك فقط (790676969418522664)
+// مسارات المصادقة عبر حسابات ديسكورد المصرحة
 // ==========================================================
 
 function getSessionFromRequest(req) {
   const token = (req.headers['x-auth-token'] || req.query.token || '').trim();
   if (!token) return null;
-  const session = db.prepare('SELECT * FROM auth_sessions WHERE token = ? AND discord_id = ?').get(token, OWNER_DISCORD_ID);
-  return session || null;
+  const session = db.prepare('SELECT * FROM auth_sessions WHERE token = ?').get(token);
+  if (!session) return null;
+  if (!isAuthorizedAdmin(session.discord_id)) {
+    return null;
+  }
+  const adminRow = db.prepare('SELECT role, note FROM site_admins WHERE discord_id = ?').get(session.discord_id);
+  const isPrimary = session.discord_id === OWNER_DISCORD_ID || adminRow?.role === 'primary';
+  return {
+    ...session,
+    role: isPrimary ? 'primary' : (adminRow?.role || 'admin'),
+    isPrimary
+  };
 }
 
 router.get('/auth/status', async (req, res) => {
   try {
     const session = getSessionFromRequest(req);
-    const ownerProfile = await botManager.getOwnerDiscordProfile();
-    const clientId = getSetting('client_id') || botManager.client?.user?.id || '';
-    const clientSecret = getSetting('discord_client_secret') || process.env.DISCORD_CLIENT_SECRET || '';
+    const clientId = getSetting('client_id') || botManager.client?.user?.id || '1568960783491014826';
 
     res.json({
       ok: true,
       authenticated: Boolean(session),
-      ownerDiscordId: OWNER_DISCORD_ID,
-      ownerProfile,
       sessionUser: session
-        ? { id: session.discord_id, username: session.username, avatar: session.avatar }
+        ? {
+            id: session.discord_id,
+            username: session.username,
+            avatar: session.avatar,
+            role: session.role,
+            isPrimary: session.isPrimary
+          }
         : null,
-      botConnected: botManager.status === 'connected',
-      oauthReady: Boolean(clientId && clientSecret)
+      botConnected: botManager.status === 'connected'
     });
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message });
@@ -177,25 +192,39 @@ router.post('/auth/discord-oauth-verify', async (req, res) => {
       return res.status(401).json({ ok: false, message: 'فشل جلب بيانات الحساب من ديسكورد' });
     }
 
-    if (discordUser.id !== OWNER_DISCORD_ID) {
+    if (!isAuthorizedAdmin(discordUser.id)) {
       return res.status(403).json({
         ok: false,
-        message: `⛔ غير مصرح بالدخول! هذا الموقع خاص بمالك المتجر فقط (${OWNER_DISCORD_ID}). الحساب الذي حاول الدخول: ${discordUser.username} (${discordUser.id})`
+        message: `⛔ غير مصرح بالدخول! هذا الحساب (${discordUser.username}) غير مضاف في قائمة إدارة المتجر.`
       });
     }
+
+    const isPrimary = discordUser.id === OWNER_DISCORD_ID;
+    const adminRecord = db.prepare('SELECT role FROM site_admins WHERE discord_id = ?').get(discordUser.id);
+    const role = isPrimary ? 'primary' : (adminRecord?.role || 'admin');
 
     const sessionToken = crypto.randomBytes(24).toString('hex');
     const avatarUrl = discordUser.avatar
       ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=128`
       : '/images/logo.png';
 
-    db.prepare('INSERT INTO auth_sessions (token, discord_id, username, avatar) VALUES (?, ?, ?, ?)')
-      .run(sessionToken, OWNER_DISCORD_ID, discordUser.username, avatarUrl);
+    // تحديث اسم وصورة الإداري في قاعدة البيانات
+    db.prepare('UPDATE site_admins SET username = ?, avatar = ? WHERE discord_id = ?')
+      .run(discordUser.username, avatarUrl, discordUser.id);
+
+    db.prepare('INSERT INTO auth_sessions (token, discord_id, username, avatar, role) VALUES (?, ?, ?, ?, ?)')
+      .run(sessionToken, discordUser.id, discordUser.username, avatarUrl, role);
 
     res.json({
       ok: true,
       sessionToken,
-      user: { id: OWNER_DISCORD_ID, username: discordUser.username, avatar: avatarUrl }
+      user: {
+        id: discordUser.id,
+        username: discordUser.username,
+        avatar: avatarUrl,
+        role,
+        isPrimary
+      }
     });
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message });
@@ -210,18 +239,112 @@ router.post('/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// حماية جميع مسارات الداشبورد بحيث لا يعمل أي مسار إلا لجلسة حساب الديسكورد 790676969418522664
+// حماية جميع مسارات الداشبورد للإداريين المصرح لهم
 router.use((req, res, next) => {
   const session = getSessionFromRequest(req);
   if (!session) {
     return res.status(401).json({
       ok: false,
       unauthorized: true,
-      message: `يرجى تسجيل الدخول بحساب الديسكورد الخاص بمالك المتجر (${OWNER_DISCORD_ID}).`
+      message: 'يرجى تسجيل الدخول بحساب ديسكورد مصرح له في إدارة المتجر.'
     });
   }
   req.ownerSession = session;
   next();
+});
+
+// ==========================================================
+// مسارات إدارة الإداريين والصلاحيات (Admins Management)
+// ==========================================================
+router.get('/admins', async (req, res) => {
+  try {
+    const admins = getAdmins();
+    const enriched = await Promise.all(
+      admins.map(async a => {
+        let liveUsername = a.username;
+        let liveAvatar = a.avatar;
+        if (botManager.client && botManager.client.isReady()) {
+          try {
+            const u = await botManager.client.users.fetch(a.discord_id);
+            if (u) {
+              liveUsername = u.username;
+              liveAvatar = u.displayAvatarURL({ size: 128 });
+            }
+          } catch (_) {}
+        }
+        return {
+          ...a,
+          username: liveUsername || a.username || 'مستخدم ديسكورد',
+          avatar: liveAvatar || a.avatar || '/images/logo.png',
+          isPrimary: a.discord_id === OWNER_DISCORD_ID || a.role === 'primary'
+        };
+      })
+    );
+    res.json({ ok: true, admins: enriched, isCallerPrimary: req.ownerSession.isPrimary });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+router.post('/admins', async (req, res) => {
+  try {
+    if (!req.ownerSession.isPrimary) {
+      return res.status(403).json({ ok: false, message: 'فقط الإداري الأساسي (المالك) يمكنه إضافة إداريين جدد.' });
+    }
+    const { discord_id, note } = req.body;
+    const cleanId = String(discord_id || '').trim();
+
+    let fetchedUsername = '';
+    let fetchedAvatar = '';
+    if (botManager.client && botManager.client.isReady()) {
+      try {
+        const u = await botManager.client.users.fetch(cleanId);
+        if (u) {
+          fetchedUsername = u.username;
+          fetchedAvatar = u.displayAvatarURL({ size: 128 });
+        }
+      } catch (_) {}
+    }
+
+    const newAdmin = addAdmin({
+      discord_id: cleanId,
+      username: fetchedUsername,
+      avatar: fetchedAvatar,
+      note: note || 'إداري متجر',
+      added_by: req.ownerSession.username || 'المالك'
+    });
+
+    addActivityLog({
+      type: 'bot_control',
+      title: 'إضافة إداري جديد',
+      details: `تمت إضافة العضو (${fetchedUsername || cleanId}) كإداري في الموقع`,
+      staff_tag: req.ownerSession.username
+    });
+
+    botManager.emitUpdate('dashboard:update', {});
+    res.json({ ok: true, admin: newAdmin, message: 'تمت إضافة الإداري وتصريحه بالدخول بنجاح!' });
+  } catch (err) {
+    res.status(400).json({ ok: false, message: err.message });
+  }
+});
+
+router.delete('/admins/:id', (req, res) => {
+  try {
+    if (!req.ownerSession.isPrimary) {
+      return res.status(403).json({ ok: false, message: 'فقط الإداري الأساسي (المالك) يمكنه إزالة الإداريين.' });
+    }
+    removeAdmin(req.params.id, req.ownerSession.discord_id);
+    addActivityLog({
+      type: 'bot_control',
+      title: 'إزالة إداري',
+      details: `تمت إزالة إداري من لوحة التحكم`,
+      staff_tag: req.ownerSession.username
+    });
+    botManager.emitUpdate('dashboard:update', {});
+    res.json({ ok: true, message: 'تمت إزالة الإداري بنجاح!' });
+  } catch (err) {
+    res.status(400).json({ ok: false, message: err.message });
+  }
 });
 
 // ==========================================================
