@@ -13,29 +13,20 @@
 <body>
 
   <!-- ==========================================
-       بوابة تسجيل الدخول الحصرية بحساب الديسكورد الخاص بالمالك فقط
-       (Owner Discord ID: 790676969418522664)
+       بوابة تسجيل الدخول عبر الديسكورد
        ========================================== -->
   <div class="auth-overlay" id="authOverlay">
     <div class="auth-card">
       <div class="auth-logo-wrap">
         <img src="/images/logo.png" alt="Lab Store Logo" />
       </div>
-      <h2 style="font-size: 22px; font-weight: 800; color: #f5f5f2;">Lab Store Dashboard</h2>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
-        الدخول محصور حصرياً بحساب الديسكورد الخاص بمالك المتجر فقط
-      </p>
-
-      <div class="owner-id-pill">
-        <i class="fa-brands fa-discord"></i>
-        <span id="authOwnerLabel">الحساب المصرّح: 790676969418522664</span>
-      </div>
+      <h2 style="font-size: 22px; font-weight: 800; color: #f5f5f2; margin-bottom: 8px;">Lab Store Dashboard</h2>
 
       <div id="authErrorBox" style="display: none; padding: 10px 14px; border-radius: 10px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.35); color: #fca5a5; font-size: 12.5px; margin-bottom: 14px;"></div>
 
-      <a href="/api/auth/discord/login" class="discord-login-btn" style="text-decoration: none;">
+      <a href="/api/auth/discord/login" class="discord-login-btn" style="text-decoration: none; margin-top: 14px;">
         <i class="fa-brands fa-discord" style="font-size: 20px;"></i>
-        <span>تسجيل الدخول عبر الديسكورد (ربط الحساب والعودة للموقع)</span>
+        <span>تسجيل الدخول عبر الديسكورد</span>
       </a>
     </div>
   </div>
@@ -86,17 +77,21 @@
           <i class="fa-solid fa-robot"></i>
           <span>التحكم بالبوتات والأدوات</span>
         </button>
+        <button class="nav-btn" data-view="admins">
+          <i class="fa-solid fa-users-gear"></i>
+          <span>طاقم الإدارة والصلاحيات</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
         <div class="bot-mini-card">
-          <div class="bot-mini-avatar" id="sidebarBotAvatar">
-            <img src="/images/logo.png" alt="Bot" />
-            <span class="status-dot disconnected" id="sidebarStatusDot"></span>
+          <div class="bot-mini-avatar" id="sidebarUserAvatarWrap">
+            <img id="sidebarUserAvatar" src="/images/logo.png" alt="Discord User" />
+            <span class="status-dot connected" id="sidebarUserStatusDot"></span>
           </div>
           <div class="bot-mini-details">
-            <h4 id="sidebarBotName">البوت غير متصل</h4>
-            <p id="sidebarBotSub">اضغط لإعداد البوت</p>
+            <h4 id="sidebarUserName">جاري التحميل...</h4>
+            <p id="sidebarUserRole">إداري المتجر</p>
           </div>
           <button class="btn btn-outline btn-sm" onclick="logoutDiscordSession()" title="تسجيل الخروج">
             <i class="fa-solid fa-right-from-bracket"></i>
@@ -115,10 +110,6 @@
         </div>
 
         <div class="topbar-actions">
-          <div class="guild-pill" id="topOwnerPill" title="حساب المالك المتصل">
-            <i class="fa-brands fa-discord"></i>
-            <span id="topOwnerName">ID: 790676969418522664</span>
-          </div>
           <div class="guild-pill" id="topGuildPill">
             <i class="fa-solid fa-server"></i>
             <span id="topGuildName">بانتظار ربط السيرفر</span>
@@ -982,6 +973,97 @@
               <button class="btn btn-primary" onclick="sendCustomEmbedToDiscord()">
                 <i class="fa-solid fa-paper-plane"></i> إرسال الإيمبد للسيرفر الآن
               </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             8. صفحة طاقم الإدارة والصلاحيات (Staff & Admins)
+             ========================================== -->
+        <section class="view-section" id="view-admins">
+          <div class="grid-equal">
+            <!-- إضافة إداري جديد -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-user-plus"></i>
+                  <span>إضافة إداري جديد للداشبورد</span>
+                </div>
+              </div>
+
+              <div id="adminAddNotice" style="display: none; padding: 10px 14px; border-radius: 8px; background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); color: #fde68a; font-size: 12.5px; margin-bottom: 14px;">
+                ℹ️ فقط الإداري الأساسي (المالك) يملك صلاحية إضافة أو إزالة الإداريين.
+              </div>
+
+              <div class="form-group">
+                <label>معرف حساب الديسكورد (Discord User ID)</label>
+                <input type="text" class="form-control" id="newAdminDiscordId" placeholder="مثال: 790676969418522664" />
+              </div>
+
+              <div class="form-group">
+                <label>مسمى أو ملاحظة (اختياري)</label>
+                <input type="text" class="form-control" id="newAdminNote" placeholder="مثال: مسؤول مبيعات / دعم فني" />
+              </div>
+
+              <div style="background: rgba(255,255,255,0.025); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.6;">
+                💡 <strong>كيف تجلب آيدي الديسكورد؟</strong><br>
+                فعّل Developer Mode من إعدادات الديسكورد، ثم اضغط كليك يمين على بروفايل الشخص واضغط <code>Copy User ID</code>.
+              </div>
+
+              <button class="btn btn-primary" id="btnAddAdmin" onclick="submitNewAdmin()">
+                <i class="fa-solid fa-plus"></i> إضافة وتصريح الإداري للدخول
+              </button>
+            </div>
+
+            <!-- معلومات الإدارة والحماية -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-shield-halved"></i>
+                  <span>نظام الصلاحيات والحماية</span>
+                </div>
+              </div>
+              <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.8;">
+                <p style="margin-bottom: 10px;">
+                  👑 <strong>الإداري الأساسي (المالك):</strong> مثبت دائماً في النظام بصلاحيات كاملة، وهو الوحيد المخول بإضافة وإزالة الإداريين الآخرين، ولا يمكن حذفه نهائياً.
+                </p>
+                <p style="margin-bottom: 10px;">
+                  🛡️ <strong>الإداريون المضافون:</strong> يمكنهم تسجيل الدخول بحساباتهم الخاصة في الديسكورد للتحكم بالتذاكر، تسجيل المبيعات، ومراقبة الإحصائيات.
+                </p>
+                <p>
+                  🔒 <strong>الأمان التام:</strong> أي شخص يحاول تسجيل الدخول وهو غير مسجل في هذه القائمة يتم منعه فوراً من الدخول.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- جدول الإداريين المصرح لهم -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-users"></i>
+                <span>قائمة الإداريين المصرح لهم بدخول لوحة التحكم</span>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="loadAdminsList()">
+                <i class="fa-solid fa-rotate"></i> تحديث القائمة
+              </button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>المستخدم</th>
+                    <th>معرف الديسكورد (ID)</th>
+                    <th>الرتبة في الموقع</th>
+                    <th>المسمى / الملاحظة</th>
+                    <th>أضيف بواسطة</th>
+                    <th>تاريخ الإضافة</th>
+                    <th>إجراء</th>
+                  </tr>
+                </thead>
+                <tbody id="adminsTableBody"></tbody>
+              </table>
             </div>
           </div>
         </section>
