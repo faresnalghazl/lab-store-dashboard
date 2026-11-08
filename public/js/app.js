@@ -172,8 +172,10 @@ async function triggerDiscordBotLogin() {
     const data = await res.json();
     if (data.ok) {
       currentLoginRequestId = data.requestId;
-      document.getElementById('authChallengeBox').style.display = 'block';
-      document.getElementById('authChallengeMsg').textContent = data.message;
+      const box = document.getElementById('authChallengeBox');
+      const msg = document.getElementById('authChallengeMsg');
+      if (box) box.style.display = 'block';
+      if (msg) msg.textContent = data.message;
       showToast(data.message);
     } else {
       showToast(data.message || 'تعذر إرسال طلب التحقق', 'error');
@@ -184,7 +186,8 @@ async function triggerDiscordBotLogin() {
 }
 
 async function verifyDiscordCode() {
-  const code = document.getElementById('authVerifyCodeInput').value.trim();
+  const codeInput = document.getElementById('authVerifyCodeInput');
+  const code = codeInput ? codeInput.value.trim() : '';
   if (!code) return showToast('يرجى إدخال الكود المكون من 6 أرقام', 'error');
 
   const res = await fetch('/api/auth/verify-code', {
@@ -197,7 +200,7 @@ async function verifyDiscordCode() {
     localStorage.setItem('labstore_discord_token', data.sessionToken);
     document.getElementById('authOverlay').classList.add('hidden');
     if (data.user) {
-      document.getElementById('topOwnerName').textContent = `${data.user.username} (${data.user.id})`;
+      updateUserSidebarProfile(data.user);
     }
     showToast('تم تسجيل الدخول بنجاح! أهلاً بك في Lab Store');
     await refreshAllData();
@@ -317,8 +320,10 @@ async function loadOverview() {
     if (!data.ok) return;
 
     storeCurrency = data.currency || 'ر.س';
-    document.getElementById('sidebarStoreName').textContent = data.storeName || 'Lab Store';
-    document.getElementById('demoBanner').style.display = data.hasDemoData ? 'flex' : 'none';
+    const storeNameEl = document.getElementById('sidebarStoreName');
+    if (storeNameEl) storeNameEl.textContent = data.storeName || 'Lab Store';
+    const demoBannerEl = document.getElementById('demoBanner');
+    if (demoBannerEl) demoBannerEl.style.display = data.hasDemoData ? 'flex' : 'none';
 
     if (data.guildMeta) {
       guildMetaCache = data.guildMeta;
@@ -330,22 +335,28 @@ async function loadOverview() {
     }
 
     const s = data.stats;
-    document.getElementById('kpiSalesTotal').textContent = `${s.sales.total} ${storeCurrency}`;
-    document.getElementById('kpiSalesCount').textContent = s.sales.count;
-    document.getElementById('kpiPurchasesTotal').textContent = `${s.purchases.total} ${storeCurrency}`;
-    document.getElementById('kpiPurchasesCount').textContent = s.purchases.count;
-    document.getElementById('kpiNoBuyCount').textContent = `${s.noBuy.count} تذكرة`;
-    document.getElementById('kpiConversionRate').textContent = `${s.tickets.conversionRate}%`;
-    document.getElementById('kpiAvgRating').textContent = `${s.reviews.average} ⭐`;
-    document.getElementById('kpiReviewsCount').textContent = s.reviews.count;
-    document.getElementById('kpiNetProfit').textContent = `${s.netProfit} ${storeCurrency}`;
-    document.getElementById('kpiOpenTickets').textContent = s.tickets.open;
-    document.getElementById('navOpenTicketsBadge').textContent = s.tickets.open;
+    if (s) {
+      const setEl = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      setEl('kpiSalesTotal', `${s.sales?.total || 0} ${storeCurrency}`);
+      setEl('kpiSalesCount', s.sales?.count || 0);
+      setEl('kpiPurchasesTotal', `${s.purchases?.total || 0} ${storeCurrency}`);
+      setEl('kpiPurchasesCount', s.purchases?.count || 0);
+      setEl('kpiNoBuyCount', `${s.noBuy?.count || 0} تذكرة`);
+      setEl('kpiConversionRate', `${s.tickets?.conversionRate ?? 100}%`);
+      setEl('kpiAvgRating', `${s.reviews?.average || 0} ⭐`);
+      setEl('kpiReviewsCount', s.reviews?.count || 0);
+      setEl('kpiNetProfit', `${s.netProfit || 0} ${storeCurrency}`);
+      setEl('kpiOpenTickets', s.tickets?.open || 0);
+      setEl('navOpenTicketsBadge', s.tickets?.open || 0);
 
-    renderSalesTrendChart(s.dailyStats || []);
-    renderNoBuyReasonsChart(s.noBuy.reasons || []);
-    renderTopStaffTable(s.topStaff || []);
-    renderLiveActivityFeed(data.recentLogs || []);
+      renderSalesTrendChart(s.dailyStats || []);
+      renderNoBuyReasonsChart(s.noBuy?.reasons || []);
+      renderTopStaffTable(s.topStaff || []);
+      renderLiveActivityFeed(data.recentLogs || []);
+    }
   } catch (err) {
     console.error('loadOverview error:', err);
   }
@@ -543,6 +554,7 @@ function renderLiveActivityFeed(logs) {
 }
 
 function updateBotStatusUI(info) {
+  if (!info) return;
   const dot = document.getElementById('sidebarStatusDot');
   const nameEl = document.getElementById('sidebarBotName');
   const subEl = document.getElementById('sidebarBotSub');
@@ -554,9 +566,9 @@ function updateBotStatusUI(info) {
   if (dot) dot.className = `status-dot ${info.status || 'disconnected'}`;
 
   if (info.status === 'connected' && info.user) {
-    nameEl.textContent = info.user.tag;
-    subEl.textContent = `متصل 🟢 • البنق: ${info.user.ping}ms`;
-    if (info.user.avatar) {
+    if (nameEl) nameEl.textContent = info.user.tag;
+    if (subEl) subEl.textContent = `متصل 🟢 • البنق: ${info.user.ping}ms`;
+    if (info.user.avatar && avatarBox) {
       avatarBox.innerHTML = `<img src="${info.user.avatar}" alt="bot" /><span class="status-dot connected" id="sidebarStatusDot"></span>`;
     }
     if (badge) {
@@ -564,25 +576,29 @@ function updateBotStatusUI(info) {
       badge.textContent = `متصل (${info.user.tag})`;
     }
   } else if (info.status === 'connecting') {
-    nameEl.textContent = 'جاري الاتصال...';
-    subEl.textContent = 'يرجى الانتظار';
+    if (nameEl) nameEl.textContent = 'جاري الاتصال...';
+    if (subEl) subEl.textContent = 'يرجى الانتظار';
     if (badge) {
       badge.className = 'badge badge-open';
       badge.textContent = 'جاري الاتصال...';
     }
   } else {
-    nameEl.textContent = 'البوت غير متصل';
-    subEl.textContent = 'أدخل التوكن من صفحة التحكم';
+    if (nameEl) nameEl.textContent = 'البوت غير متصل';
+    if (subEl) subEl.textContent = 'أدخل التوكن من صفحة التحكم';
     if (badge) {
       badge.className = 'badge badge-nobuy';
       badge.textContent = 'غير متصل';
     }
   }
 
-  if (info.guild) {
-    topGuildName.textContent = `${info.guild.name} (${info.guild.memberCount} عضو)`;
-  } else {
-    topGuildName.textContent = 'بانتظار ربط السيرفر';
+  if (topGuildName) {
+    if (info.guild && info.guild.name) {
+      topGuildName.textContent = `${info.guild.name} (${info.guild.memberCount || 0} عضو)`;
+    } else if (info.status === 'connected') {
+      topGuildName.textContent = 'السيرفر متصل';
+    } else {
+      topGuildName.textContent = 'بانتظار ربط السيرفر';
+    }
   }
 
   if (errAlert) {
