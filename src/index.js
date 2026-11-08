@@ -7,7 +7,7 @@ const { Server } = require('socket.io');
 
 const apiRoutes = require('./routes/api');
 const botManager = require('./bot/botManager');
-const { getSetting } = require('./database/db');
+const { getSetting, setSetting } = require('./database/db');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -47,6 +47,14 @@ server.listen(PORT, async () => {
   console.log('====================================================');
   console.log(`🚀 Lab Store Dashboard is running on: http://localhost:${PORT}`);
   console.log('====================================================');
+
+  // مزامنة التوكن ومعرف السيرفر من متغيرات البيئة إن وجدت
+  if (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim().length > 10) {
+    setSetting('bot_token', process.env.DISCORD_TOKEN.trim());
+  }
+  if (process.env.GUILD_ID && process.env.GUILD_ID.trim().length > 10) {
+    setSetting('guild_id', process.env.GUILD_ID.trim());
+  }
 
   // تشغيل البوت الأساسي تلقائياً إن كان التوكن محفوظاً
   const savedToken = getSetting('bot_token') || process.env.DISCORD_TOKEN;
