@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab Store | لوحة تحكم وإحصائيات سيرفر الديسكورد</title>
+  <link rel="icon" type="image/png" href="/images/logo.png" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <!-- ==========================================
+       بوابة تسجيل الدخول الحصرية بحساب الديسكورد الخاص بالمالك فقط
+       (Owner Discord ID: 790676969418522664)
+       ========================================== -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-logo-wrap">
+        <img src="/images/logo.png" alt="Lab Store Logo" />
+      </div>
+      <h2 style="font-size: 22px; font-weight: 800; color: #f5f5f2;">Lab Store Dashboard</h2>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+        الدخول محصور حصرياً بحساب الديسكورد الخاص بمالك المتجر فقط
+      </p>
+
+      <div class="owner-id-pill">
+        <i class="fa-brands fa-discord"></i>
+        <span id="authOwnerLabel">الحساب المصرّح: 790676969418522664</span>
+      </div>
+
+      <div id="authErrorBox" style="display: none; padding: 10px 14px; border-radius: 10px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.35); color: #fca5a5; font-size: 12.5px; margin-bottom: 14px;"></div>
+
+      <button class="discord-login-btn" id="btnTriggerDiscordChallenge" onclick="triggerDiscordBotLogin()">
+        <i class="fa-brands fa-discord" style="font-size: 18px;"></i>
+        <span>تسجيل الدخول عبر حسابي في الديسكورد</span>
+      </button>
+
+      <!-- يظهر بعد الضغط لإدخال الكود أو الضغط على الزر في خاص الديسكورد -->
+      <div id="authChallengeBox" style="display: none; margin-top: 18px; padding: 16px; border-radius: 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); text-align: right;">
+        <p id="authChallengeMsg" style="font-size: 12.5px; color: #e5e5e0; margin-bottom: 12px; line-height: 1.6;"></p>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" class="form-control" id="authVerifyCodeInput" placeholder="أدخل كود التحقق المكون من 6 أرقام..." style="text-align: center; font-weight: 800; letter-spacing: 3px;" />
+          <button class="btn btn-primary" onclick="verifyDiscordCode()">تأكيد</button>
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 10px;">
+          💡 يمكنك أيضاً الضغط على زر <strong>"✅ تأكيد الدخول للداشبورد"</strong> الذي وصلك في خاص الديسكورد (أو كتابة <code>/login</code> في السيرفر) وسيفتح الموقع تلقائياً!
+        </div>
+      </div>
+
+      <a href="/api/auth/discord/login" class="discord-oauth-btn">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span>الدخول عبر صفحة Discord OAuth2</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="app-layout">
+    <!-- القائمة الجانبية -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <div class="brand-logo">
+          <img src="/images/logo.png" alt="Lab Store" />
+        </div>
+        <div class="brand-info">
+          <h1 id="sidebarStoreName">Lab Store</h1>
+          <span>نظام المتجر والتحكم بالديسكورد</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <div class="nav-section-label">المراقبة والإحصائيات</div>
+        <button class="nav-btn active" data-view="overview">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>الإحصائيات الشاملة</span>
+        </button>
+        <button class="nav-btn" data-view="tickets">
+          <i class="fa-solid fa-ticket"></i>
+          <span>التذاكر والبيع والشراء</span>
+          <span class="nav-badge" id="navOpenTicketsBadge">0</span>
+        </button>
+        <button class="nav-btn" data-view="reviews">
+          <i class="fa-solid fa-star"></i>
+          <span>التقييمات وآراء العملاء</span>
+        </button>
+
+        <div class="nav-section-label">إدارة المتجر والسيرفر</div>
+        <button class="nav-btn" data-view="products">
+          <i class="fa-solid fa-bag-shopping"></i>
+          <span>كتالوج المنتجات</span>
+        </button>
+        <button class="nav-btn" data-view="ticket-setup">
+          <i class="fa-solid fa-sliders"></i>
+          <span>إعدادات وأقسام التذاكر</span>
+        </button>
+        <button class="nav-btn" data-view="welcome-roles">
+          <i class="fa-solid fa-user-shield"></i>
+          <span>الترحيب والرتب التفاعلية</span>
+        </button>
+        <button class="nav-btn" data-view="bot-control">
+          <i class="fa-solid fa-robot"></i>
+          <span>التحكم بالبوتات والأدوات</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="bot-mini-card">
+          <div class="bot-mini-avatar" id="sidebarBotAvatar">
+            <img src="/images/logo.png" alt="Bot" />
+            <span class="status-dot disconnected" id="sidebarStatusDot"></span>
+          </div>
+          <div class="bot-mini-details">
+            <h4 id="sidebarBotName">البوت غير متصل</h4>
+            <p id="sidebarBotSub">اضغط لإعداد البوت</p>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="logoutDiscordSession()" title="تسجيل الخروج">
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- المحتوى الرئيسي -->
+    <div class="main-wrapper">
+      <!-- الشريط العلوي -->
+      <header class="topbar">
+        <div class="topbar-title">
+          <h2 id="pageHeaderTitle">لوحة الإحصائيات والمراقبة المباشرة</h2>
+          <p id="pageHeaderSub">متابعة حية لجميع عمليات البيع، الشراء، عدم الشراء، والتقييمات في سيرفر الديسكورد</p>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="guild-pill" id="topOwnerPill" title="حساب المالك المتصل">
+            <i class="fa-brands fa-discord"></i>
+            <span id="topOwnerName">ID: 790676969418522664</span>
+          </div>
+          <div class="guild-pill" id="topGuildPill">
+            <i class="fa-solid fa-server"></i>
+            <span id="topGuildName">بانتظار ربط السيرفر</span>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openNewDealModal()">
+            <i class="fa-solid fa-plus"></i>
+            <span>تسجيل عملية فورية</span>
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="refreshAllData()" title="تحديث البيانات">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- تنبيه البيانات التجريبية القابلة للمسح -->
+      <div class="demo-banner" id="demoBanner" style="display: none;">
+        <div class="demo-banner-text">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span>يتم حالياً عرض <strong>بيانات تجريبية توضيحية</strong> لمعاينة الرسوم البيانية وإحصائيات البيع وعدم الشراء. يمكنك مسحها بضغطة زر!</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-danger btn-sm" onclick="clearDemoDataAction()">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>مسح البيانات التجريبية</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- منطقة الصفحات -->
+      <main class="content-area">
+
+        <!-- ==========================================
+             1. صفحة الإحصائيات الشاملة (Overview)
+             ========================================== -->
+        <section class="view-section active" id="view-overview">
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title">إجمالي مبيعات المتجر (البيع)</span>
+                <div class="kpi-icon emerald"><i class="fa-solid fa-sack-dollar"></i></div>
+              </div>
+              <div class="kpi-value" id="kpiSalesTotal">0 ر.س</div>
+              <div class="kpi-sub">
+                <span class="badge badge-sale"><i class="fa-solid fa-check"></i> <span id="kpiSalesCount">0</span> عملية بيع ناجحة</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title">مشتريات المتجر من الأعضاء (الشراء)</span>
+                <div class="kpi-icon blue"><i class="fa-solid fa-handshake"></i></div>
+              </div>
+              <div class="kpi-value" id="kpiPurchasesTotal">0 ر.س</div>
+              <div class="kpi-sub">
+                <span class="badge badge-purchase"><i class="fa-solid fa-cart-arrow-down"></i> <span id="kpiPurchasesCount">0</span> عملية شراء</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title">حالات عدم الشراء / الإلغاء</span>
+                <div class="kpi-icon rose"><i class="fa-solid fa-ban"></i></div>
+              </div>
+              <div class="kpi-value" id="kpiNoBuyCount">0 تذكرة</div>
+              <div class="kpi-sub">
+                <span>نسبة إتمام الصفقات: <strong id="kpiConversionRate" style="color: #34d399;">100%</strong></span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title">متوسط تقييمات العملاء</span>
+                <div class="kpi-icon amber"><i class="fa-solid fa-star"></i></div>
+              </div>
+              <div class="kpi-value" id="kpiAvgRating">0.0 ⭐</div>
+              <div class="kpi-sub">
+                <span>إجمالي التقييمات الموثقة: <strong id="kpiReviewsCount">0</strong></span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <span class="kpi-title">صافي الربح (المبيعات - المشتريات)</span>
+                <div class="kpi-icon purple"><i class="fa-solid fa-chart-line"></i></div>
+              </div>
+              <div class="kpi-value" id="kpiNetProfit">0 ر.س</div>
+              <div class="kpi-sub">
+                <span>التذاكر النشطة الآن: <strong id="kpiOpenTickets">0</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-chart-column"></i>
+                  <span>مؤشر المبيعات والمشتريات وحالات عدم الشراء</span>
+                </div>
+                <span style="font-size: 12px; color: var(--text-secondary);">تحديث لحظي مباشر</span>
+              </div>
+              <div class="chart-box">
+                <canvas id="salesTrendChart"></canvas>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-circle-xmark" style="color: var(--accent-rose);"></i>
+                  <span>تحليل أسباب عدم الشراء</span>
+                </div>
+              </div>
+              <div class="chart-box" style="height: 210px;">
+                <canvas id="noBuyReasonsChart"></canvas>
+              </div>
+              <div id="noBuyReasonsList" style="margin-top: 14px; display: flex; flex-direction: column; gap: 6px;"></div>
+            </div>
+          </div>
+
+          <div class="grid-equal">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-ranking-star"></i>
+                  <span>إحصائيات البائعين وطاقم الإدارة</span>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>المسؤول / البائع</th>
+                      <th>المبيعات</th>
+                      <th>إجمالي البيع</th>
+                      <th>مشتريات</th>
+                      <th>إجمالي التذاكر</th>
+                    </tr>
+                  </thead>
+                  <tbody id="topStaffTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-bolt"></i>
+                  <span>سجل العمليات المباشر في السيرفر</span>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="seedDemoDataAction()">
+                  <i class="fa-solid fa-flask"></i> بيانات تجريبية
+                </button>
+              </div>
+              <div class="feed-list" id="liveActivityFeed"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             2. صفحة التذاكر والبيع والشراء وعدم الشراء
+             ========================================== -->
+        <section class="view-section" id="view-tickets">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-ticket"></i>
+                <span>سجل ومراقبة التذاكر (البيع • الشراء • عدم الشراء)</span>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openNewDealModal()">
+                <i class="fa-solid fa-plus"></i>
+                <span>إضافة عملية / تذكرة يدوياً</span>
+              </button>
+            </div>
+
+            <div class="filter-bar">
+              <div class="filter-pills" id="ticketFilterPills">
+                <button class="filter-pill active" data-status="all">الكل</button>
+                <button class="filter-pill" data-status="open">مفتوحة الآن 🟢</button>
+                <button class="filter-pill" data-status="completed_sale">تم البيع ✅</button>
+                <button class="filter-pill" data-status="completed_purchase">تم الشراء 🤝</button>
+                <button class="filter-pill" data-status="cancelled_no_buy">لم يتم الشراء ❌</button>
+                <button class="filter-pill" data-status="closed">مغلقة 🔒</button>
+              </div>
+
+              <div style="min-width: 260px;">
+                <input type="text" class="form-control" id="ticketSearchInput" placeholder="🔍 ابحث برقم التذكرة، اسم العميل، المنتج، السبب..." oninput="loadTickets()" />
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>رقم التذكرة</th>
+                    <th>العميل</th>
+                    <th>القسم</th>
+                    <th>المنتج / الغرض</th>
+                    <th>حالة العملية</th>
+                    <th>المبلغ</th>
+                    <th>سبب عدم الشراء / ملاحظات</th>
+                    <th>المسؤول</th>
+                    <th>التاريخ</th>
+                    <th>تحكم ومحادثة</th>
+                  </tr>
+                </thead>
+                <tbody id="ticketsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             3. صفحة التقييمات وآراء العملاء
+             ========================================== -->
+        <section class="view-section" id="view-reviews">
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-star" style="color: var(--accent-amber);"></i>
+                  <span>توزيع تقييمات العملاء</span>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="openAddReviewModal()">
+                  <i class="fa-solid fa-plus"></i> إضافة تقييم
+                </button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap;">
+                <div style="text-align: center; min-width: 140px;">
+                  <div style="font-size: 44px; font-weight: 800; color: #fbbf24;" id="reviewsBigAvg">5.0</div>
+                  <div class="stars-gold" style="font-size: 18px;">★★★★★</div>
+                  <div style="font-size: 12.5px; color: var(--text-secondary); margin-top: 4px;">
+                    من إجمالي <strong id="reviewsTotalCount">0</strong> تقييم
+                  </div>
+                </div>
+                <div style="flex: 1; min-width: 220px;" id="starDistributionBars"></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-hashtag"></i>
+                  <span>إعداد روم نشر التقييمات في الديسكورد</span>
+                </div>
+              </div>
+              <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+                عند إتمام أي عملية بيع، يرسل البوت تلقائياً أزرار التقييم (1⭐ إلى 5⭐) للعميل، وفور كتابة تقييمه يتم نشره في هذا الروم وفي الموقع تلقائياً.
+              </p>
+              <div class="form-group">
+                <label>روم التقييمات في السيرفر (Reviews Channel)</label>
+                <select class="form-control channel-select" id="settingReviewsChannelId"></select>
+              </div>
+              <button class="btn btn-success btn-sm" onclick="saveReviewsChannelSetting()">
+                <i class="fa-solid fa-floppy-disk"></i> حفظ روم التقييمات
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-comments"></i>
+                <span>جميع تقييمات وآراء العملاء</span>
+              </div>
+            </div>
+            <div class="grid-3" id="reviewsCardsGrid"></div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             4. صفحة كتالوج المنتجات (مع تعديل لون الإيمبد وستايل البانر/الزر)
+             ========================================== -->
+        <section class="view-section" id="view-products">
+          <div class="card" style="margin-bottom: 22px;">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-plus-circle"></i>
+                <span>إضافة منتج أو خدمة جديدة للمتجر (مع تخصيص لون الإيمبد والزر)</span>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label>اسم المنتج / الخدمة</label>
+                <input type="text" class="form-control" id="prodName" placeholder="مثال: خدمة النيترو" />
+              </div>
+              <div class="form-group">
+                <label>السعر</label>
+                <input type="number" class="form-control" id="prodPrice" placeholder="35" />
+              </div>
+              <div class="form-group">
+                <label>التصنيف</label>
+                <input type="text" class="form-control" id="prodCategory" placeholder="خدمات / نيتروهات" />
+              </div>
+              <div class="form-group">
+                <label>الكمية المتوفرة (-1 يعني غير محدود)</label>
+                <input type="number" class="form-control" id="prodStock" value="-1" />
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label>وصف المنتج والضمان</label>
+                <input type="text" class="form-control" id="prodDesc" placeholder="وصف مختصر يظهر للعميل..." />
+              </div>
+              <div class="form-group">
+                <label>رابط صورة / بانر المنتج</label>
+                <input type="text" class="form-control" id="prodImage" placeholder="https://..." />
+              </div>
+            </div>
+
+            <!-- تخصيص لون الإيمبد وستايل العرض والزر -->
+            <div class="form-grid" style="background: rgba(255,255,255,0.025); padding: 14px; border-radius: 10px; border: 1px solid var(--border-color); margin-bottom: 14px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>🎨 لون إيمبد المنتج (Embed Color)</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input type="color" class="form-control" id="prodEmbedColor" value="#2b2d31" style="width: 60px; height: 42px; padding: 3px;" oninput="document.getElementById('prodEmbedColorHex').value = this.value" />
+                  <input type="text" class="form-control" id="prodEmbedColorHex" value="#2b2d31" oninput="document.getElementById('prodEmbedColor').value = this.value" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>🖼️ شكل رسالة المنتج في الديسكورد</label>
+                <select class="form-control" id="prodBannerOnly">
+                  <option value="1">صورة البانر فقط داخل الإيمبد + الزر تحتها (مثل الصورة المرفقة)</option>
+                  <option value="0">بطاقة كاملة (السعر + الوصف + الصورة + الزر)</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>🔘 نص الزر وإيموجي الزر تحت الإيمبد</label>
+                <div style="display: flex; gap: 6px;">
+                  <input type="text" class="form-control" id="prodBtnLabel" placeholder="مثال: نيتروهات" />
+                  <input type="text" class="form-control" id="prodBtnEmoji" value="💎" style="width: 70px; text-align: center;" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>لون الزر في الديسكورد</label>
+                <select class="form-control" id="prodBtnStyle">
+                  <option value="Secondary">رمادي داكن (Secondary - مثل الصورة)</option>
+                  <option value="Primary">أزرق (Primary)</option>
+                  <option value="Success">أخضر (Success)</option>
+                  <option value="Danger">أحمر (Danger)</option>
+                </select>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="createProduct()">
+              <i class="fa-solid fa-check"></i> إضافة المنتج للكتالوج
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-bag-shopping"></i>
+                <span>منتجات المتجر الحالية (يمكنك تعديل لون الإيمبد لأي منتج مباشرة)</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12.5px; color: var(--text-secondary);">روم نشر بطاقة المنتج:</span>
+                <select class="form-control channel-select" id="publishProductChannelSelect" style="width: 210px;"></select>
+              </div>
+            </div>
+            <div class="grid-3" id="productsGrid"></div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             5. صفحة إعدادات وأقسام التذاكر (نفس ستايل الصورة المرفقة: بانر + أزرار)
+             ========================================== -->
+        <section class="view-section" id="view-ticket-setup">
+          <div class="grid-equal">
+            <!-- إعداد وإرسال لوحة التذاكر للديسكورد -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-paper-plane"></i>
+                  <span>تصميم وإرسال بانل التذاكر (ستايل البانر + الأزرار)</span>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>الروم المراد إرسال البانل فيه</label>
+                  <select class="form-control channel-select" id="ticketPanelChannelSelect"></select>
+                </div>
+                <div class="form-group">
+                  <label>طريقة عرض الأقسام تحت البانر</label>
+                  <select class="form-control" id="ticketPanelModeSelect">
+                    <option value="buttons">أزرار تحت البانر (مثل زر "نيتروهات 💎" في الصورة)</option>
+                    <option value="select">قائمة منسدلة (Select Menu)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>شكل الإيمبد في الديسكورد</label>
+                  <select class="form-control" id="ticketPanelBannerOnlySelect">
+                    <option value="1">صورة البانر فقط داخل الإيمبد بدون كلام زائد (مثل الصورة تماماً)</option>
+                    <option value="0">عرض العنوان والوصف مع صورة البانر</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>لون الإيمبد (Hex Color - افتراضي داكن #2b2d31)</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="color" class="form-control" id="ticketPanelColor" value="#2b2d31" style="width: 60px; height: 42px; padding: 3px;" />
+                    <input type="text" class="form-control" id="ticketPanelBanner" placeholder="رابط صورة البانر https://..." />
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>عنوان البانل (يظهر فقط إذا اخترت عرض العنوان)</label>
+                  <input type="text" class="form-control" id="ticketPanelTitle" />
+                </div>
+                <div class="form-group">
+                  <label>وصف البانل (اختياري)</label>
+                  <input type="text" class="form-control" id="ticketPanelDesc" />
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>رتبة طاقم الإدارة/المبيعات (لرؤية التذاكر)</label>
+                  <select class="form-control role-select" id="staffRoleSelect"></select>
+                </div>
+                <div class="form-group">
+                  <label>روم لوق المبيعات والفواتير</label>
+                  <select class="form-control channel-select" id="salesLogChannelSelect"></select>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="sendTicketPanelToDiscord()">
+                  <i class="fa-solid fa-rocket"></i> إرسال بانل التذاكر للديسكورد الآن
+                </button>
+                <button class="btn btn-outline" onclick="saveTicketPanelSettingsOnly()">
+                  <i class="fa-solid fa-floppy-disk"></i> حفظ الإعدادات
+                </button>
+              </div>
+            </div>
+
+            <!-- إضافة قسم / زر تذاكر جديد -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-folder-plus"></i>
+                  <span>إضافة زر / قسم تذاكر جديد (مثال: نيتروهات 💎)</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>اسم الزر / القسم</label>
+                  <input type="text" class="form-control" id="catName" placeholder="مثال: نيتروهات" />
+                </div>
+                <div class="form-group">
+                  <label>إيموجي الزر (عادي أو إيموجي سيرفر)</label>
+                  <input type="text" class="form-control" id="catEmoji" value="💎" placeholder="💎 أو <:nitro:123>" />
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>لون الزر تحت البانر</label>
+                  <select class="form-control" id="catButtonStyle">
+                    <option value="Secondary">رمادي داكن (Secondary - مثل الصورة)</option>
+                    <option value="Primary">أزرق (Primary)</option>
+                    <option value="Success">أخضر (Success)</option>
+                    <option value="Danger">أحمر (Danger)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>لون الإيمبد لهذا القسم</label>
+                  <input type="color" class="form-control" id="catEmbedColor" value="#2b2d31" style="height: 42px;" />
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>رابط صورة بانر خاصة بهذا القسم (اختياري)</label>
+                  <input type="text" class="form-control" id="catBannerUrl" placeholder="https://... (مثل صورة خدمة النيترو)" />
+                </div>
+                <div class="form-group">
+                  <label>الكاتيجوري في الديسكورد لفتح التذكرة داخله</label>
+                  <select class="form-control category-channel-select" id="catDiscordParent"></select>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>نوع القسم في الإحصائيات</label>
+                  <select class="form-control" id="catType">
+                    <option value="buy">شراء من المتجر (Buy)</option>
+                    <option value="sell">بيع غرض للمتجر (Sell to Store)</option>
+                    <option value="support">دعم فني / استفسار (Support)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>رسالة الترحيب التلقائية داخل التذكرة عند فتحها</label>
+                  <input type="text" class="form-control" id="catWelcome" placeholder="أهلاً بك! يرجى تحديد طلبك..." />
+                </div>
+              </div>
+
+              <button class="btn btn-success" onclick="createTicketCategory()">
+                <i class="fa-solid fa-plus"></i> إضافة الزر / القسم
+              </button>
+            </div>
+          </div>
+
+          <!-- جدول الأقسام الحالية مع زر إرسال بانل مستقل لكل قسم -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-list-check"></i>
+                <span>أقسام وأزرار التذاكر الحالية (يمكنك إرسال بانل مستقل لأي قسم بضغطة زر)</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12.5px; color: var(--text-secondary);">روم الإرسال:</span>
+                <select class="form-control channel-select" id="singleCatPublishChannel" style="width: 210px;"></select>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>الزر في الديسكورد</th>
+                    <th>النوع</th>
+                    <th>لون الإيمبد</th>
+                    <th>صورة البانر</th>
+                    <th>رسالة الترحيب داخل التذكرة</th>
+                    <th>إرسال للروم / حذف</th>
+                  </tr>
+                </thead>
+                <tbody id="categoriesTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             6. صفحة الترحيب والرتب التلقائية والتفاعلية
+             ========================================== -->
+        <section class="view-section" id="view-welcome-roles">
+          <div class="grid-equal">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-hand-sparkles"></i>
+                  <span>نظام الترحيب والرتبة التلقائية (Auto-Role)</span>
+                </div>
+                <button class="btn btn-warning btn-sm" onclick="testWelcomeMessage()">
+                  <i class="fa-solid fa-vial"></i> إرسال ترحيب تجريبي
+                </button>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>حالة نظام الترحيب</label>
+                  <select class="form-control" id="welcomeEnabled">
+                    <option value="1">مفعل ✅</option>
+                    <option value="0">معطل ❌</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>روم الترحيب بالأعضاء الجدد</label>
+                  <select class="form-control channel-select" id="welcomeChannelSelect"></select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>الرتبة التلقائية عند دخول العضو (Auto-Role)</label>
+                <select class="form-control role-select" id="autoRoleSelect"></select>
+              </div>
+
+              <div class="form-group">
+                <label>رسالة الترحيب (المتغيرات: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{memberCount}</code>)</label>
+                <textarea class="form-control" id="welcomeMessageInput"></textarea>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>لون إيمبد الترحيب</label>
+                  <input type="color" class="form-control" id="welcomeColorInput" value="#2b2d31" style="height: 44px;" />
+                </div>
+                <div class="form-group">
+                  <label>رابط صورة بانر الترحيب (اختياري)</label>
+                  <input type="text" class="form-control" id="welcomeBannerInput" placeholder="https://..." />
+                </div>
+              </div>
+
+              <button class="btn btn-primary" onclick="saveWelcomeAndRoleSettings()">
+                <i class="fa-solid fa-floppy-disk"></i> حفظ إعدادات الترحيب والرتبة التلقائية
+              </button>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-id-badge"></i>
+                  <span>إنشاء لوحة رتب تفاعلية بالأزرار (Button Roles)</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>عنوان لوحة الرتب</label>
+                  <input type="text" class="form-control" id="rolePanelTitle" placeholder="🎭 اختر رتب الإشعارات الخاصة بك" />
+                </div>
+                <div class="form-group">
+                  <label>روم النشر في السيرفر</label>
+                  <select class="form-control channel-select" id="rolePanelChannel"></select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>وصف اللوحة</label>
+                <input type="text" class="form-control" id="rolePanelDesc" placeholder="اضغط على الزر للحصول على الرتبة أو إزالتها:" />
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid var(--border-color); margin-bottom: 14px;">
+                <label style="font-size: 13px; font-weight: 700; display: block; margin-bottom: 10px;">إضافة زر رتبة للوحة:</label>
+                <div class="form-grid">
+                  <select class="form-control role-select" id="tempRoleSelect"></select>
+                  <input type="text" class="form-control" id="tempRoleLabel" placeholder="اسم الزر (مثال: إشعارات العروض)" />
+                  <input type="text" class="form-control" id="tempRoleEmoji" placeholder="إيموجي 🔔" value="🔔" />
+                  <select class="form-control" id="tempRoleStyle">
+                    <option value="Secondary">رمادي (Secondary)</option>
+                    <option value="Primary">أزرق (Primary)</option>
+                    <option value="Success">أخضر (Success)</option>
+                    <option value="Danger">أحمر (Danger)</option>
+                  </select>
+                </div>
+                <button class="btn btn-outline btn-sm" style="margin-top: 10px;" onclick="addTempRoleButton()">
+                  <i class="fa-solid fa-plus"></i> إدراج الزر في اللوحة
+                </button>
+                <div id="tempRolesPreview" style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;"></div>
+              </div>
+
+              <button class="btn btn-success" onclick="saveAndPublishRolePanel()">
+                <i class="fa-solid fa-paper-plane"></i> حفظ وإرسال لوحة الرتب للديسكورد
+              </button>
+
+              <div style="margin-top: 18px;" id="savedRolePanelsList"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             7. صفحة التحكم بالبوتات والأدوات الذكية (مع اختيار أكثر من روم للخط التلقائي)
+             ========================================== -->
+        <section class="view-section" id="view-bot-control">
+          <div class="grid-equal">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-brands fa-discord"></i>
+                  <span>ربط وتشغيل البوت الأساسي للسيرفر</span>
+                </div>
+                <span class="badge" id="botControlStatusBadge">غير متصل</span>
+              </div>
+
+              <div id="botErrorAlert" style="display: none; padding: 12px; border-radius: 8px; background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.35); color: #fca5a5; font-size: 12.5px; margin-bottom: 14px;"></div>
+
+              <div class="form-group">
+                <label>توكن بوت الديسكورد (Discord Bot Token)</label>
+                <input type="password" class="form-control" id="botTokenInput" placeholder="أدخل توكن البوت..." />
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>معرف السيرفر (Guild ID)</label>
+                  <input type="text" class="form-control" id="botGuildIdInput" placeholder="يتم جلبه تلقائياً..." />
+                </div>
+                <div class="form-group">
+                  <label>اسم المتجر وعملة البيع</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" class="form-control" id="storeNameInput" placeholder="Lab Store" />
+                    <input type="text" class="form-control" id="storeCurrencyInput" placeholder="ر.س" style="width: 90px;" />
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="saveTokenAndStartBot()">
+                  <i class="fa-solid fa-power-off"></i> حفظ التوكن وتشغيل البوت
+                </button>
+                <button class="btn btn-outline" onclick="controlBotAction('restart')">
+                  <i class="fa-solid fa-rotate"></i> إعادة تشغيل
+                </button>
+                <button class="btn btn-danger" onclick="controlBotAction('stop')">
+                  <i class="fa-solid fa-stop"></i> إيقاف البوت
+                </button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-satellite-dish"></i>
+                  <span>التحكم بحالة البوت والنشاط (Bot Presence)</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>حالة الاتصال (Status)</label>
+                  <select class="form-control" id="botPresenceStatus">
+                    <option value="online">🟢 متصل (Online)</option>
+                    <option value="idle">🌙 خامل (Idle)</option>
+                    <option value="dnd">⛔ عدم الإزعاج (Do Not Disturb)</option>
+                    <option value="invisible">⚪ مخفي (Invisible)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>نوع النشاط</label>
+                  <select class="form-control" id="botActivityType">
+                    <option value="Playing">يلعب (Playing)</option>
+                    <option value="Watching">يشاهد (Watching)</option>
+                    <option value="Listening">يستمع إلى (Listening)</option>
+                    <option value="Competing">يتنافس في (Competing)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>عبارة الحالة الظاهرة على البوت</label>
+                <input type="text" class="form-control" id="botActivityText" placeholder="Lab Store | خدمة العملاء 24/7" />
+              </div>
+              <button class="btn btn-success" onclick="updateBotPresenceAction()">
+                <i class="fa-solid fa-bolt"></i> تحديث حالة البوت فوراً
+              </button>
+            </div>
+          </div>
+
+          <!-- الرد التلقائي + الخط التلقائي المتعدد الرومات -->
+          <div class="grid-equal">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-grip-lines"></i>
+                  <span>نظام الخط التلقائي في رومات المتجر (Auto-Line متعدد الرومات)</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>تفعيل الخط التلقائي</label>
+                <select class="form-control" id="autolineEnabled">
+                  <option value="0">معطل ❌</option>
+                  <option value="1">مفعل ✅</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>نص الخط الفاصل أو رابط صورة الخط</label>
+                <input type="text" class="form-control" id="autolineContent" placeholder="━━━✦❘༻ Lab Store ༺❘✦━━━ أو رابط صورة" />
+              </div>
+
+              <div class="form-group">
+                <label>إضافة رومات للخط التلقائي (يمكنك اختيار أكثر من روم):</label>
+                <div style="display: flex; gap: 8px;">
+                  <select class="form-control channel-select" id="autolineChannelSelect"></select>
+                  <button class="btn btn-outline" type="button" onclick="addChannelToAutoLineList()" style="white-space: nowrap;">
+                    <i class="fa-solid fa-plus"></i> إضافة الروم
+                  </button>
+                </div>
+                <div class="channel-chips-wrap" id="autolineChannelsChips"></div>
+              </div>
+
+              <button class="btn btn-primary" onclick="saveAutoLineSettings()">
+                <i class="fa-solid fa-floppy-disk"></i> حفظ إعدادات الخط التلقائي
+              </button>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-comments"></i>
+                  <span>نظام الرد التلقائي الذكي (Auto-Responder)</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <input type="text" class="form-control" id="arTrigger" placeholder="الكلمة المفتاحية (مثال: طرق الدفع)" />
+                <select class="form-control" id="arMatchType">
+                  <option value="contains">يحتوي على الكلمة</option>
+                  <option value="exact">مطابق تماماً</option>
+                  <option value="startsWith">يبدأ بالكلمة</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-top: 10px;">
+                <textarea class="form-control" id="arResponse" placeholder="نص الرد التلقائي الذي يرسله البوت..."></textarea>
+              </div>
+              <button class="btn btn-success btn-sm" onclick="addAutoResponder()">
+                <i class="fa-solid fa-plus"></i> إضافة رد تلقائي
+              </button>
+
+              <div class="table-responsive" style="margin-top: 16px;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>الكلمة</th>
+                      <th>الرد</th>
+                      <th>حذف</th>
+                    </tr>
+                  </thead>
+                  <tbody id="autoRespondersTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- البوتات الإضافية + مرسل الإعلانات -->
+          <div class="grid-equal">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-network-wired"></i>
+                  <span>ربط والتحكم ببوتات إضافية في السيرفر (Multi-Bots)</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <input type="text" class="form-control" id="subBotName" placeholder="اسم البوت (مثال: بوت السيستم)" />
+                <input type="password" class="form-control" id="subBotToken" placeholder="توكن البوت الإضافي..." />
+              </div>
+              <div class="form-grid" style="margin-top: 10px;">
+                <input type="text" class="form-control" id="subBotActivity" placeholder="حالة النشاط" />
+                <button class="btn btn-primary" onclick="addSubBotAction()">
+                  <i class="fa-solid fa-plus"></i> إضافة وتشغيل البوت
+                </button>
+              </div>
+              <div id="subBotsListContainer" style="margin-top: 16px; display: flex; flex-direction: column; gap: 10px;"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-bullhorn"></i>
+                  <span>إرسال إعلان أو إيمبد مخصص للسيرفر</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>الروم المستهدف</label>
+                  <select class="form-control channel-select" id="embedTargetChannel"></select>
+                </div>
+                <div class="form-group">
+                  <label>منشن مع الرسالة (اختياري)</label>
+                  <input type="text" class="form-control" id="embedContentPing" placeholder="@everyone أو @here" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>عنوان الإيمبد</label>
+                <input type="text" class="form-control" id="embedTitleInput" placeholder="عنوان الإعلان" />
+              </div>
+              <div class="form-group">
+                <label>محتوى الإعلان</label>
+                <textarea class="form-control" id="embedDescInput" placeholder="اكتب تفاصيل الإعلان..."></textarea>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>اللون</label>
+                  <input type="color" class="form-control" id="embedColorInput" value="#2b2d31" style="height: 42px;" />
+                </div>
+                <div class="form-group">
+                  <label>رابط صورة البانر (اختياري)</label>
+                  <input type="text" class="form-control" id="embedImageInput" placeholder="https://..." />
+                </div>
+              </div>
+              <button class="btn btn-primary" onclick="sendCustomEmbedToDiscord()">
+                <i class="fa-solid fa-paper-plane"></i> إرسال الإيمبد للسيرفر الآن
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- مودال تفاصيل التذكرة -->
+  <div class="modal-backdrop" id="ticketDetailModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalTicketTitle">🎫 تفاصيل التذكرة #100</h3>
+        <button class="btn btn-outline btn-sm" onclick="closeModal('ticketDetailModal')">✕</button>
+      </div>
+
+      <div id="modalTicketMeta" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px;"></div>
+
+      <h4 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-secondary);">💬 سجل محادثة التذكرة المباشر:</h4>
+      <div class="chat-transcript" id="modalTicketChat"></div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 20px;">
+        <input type="text" class="form-control" id="modalChatInput" placeholder="اكتب رسالة لإرسالها مباشرة داخل روم التذكرة في الديسكورد..." />
+        <button class="btn btn-primary" onclick="sendChatToTicket()">
+          <i class="fa-solid fa-paper-plane"></i> إرسال
+        </button>
+      </div>
+
+      <div style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+        <h4 style="font-size: 14px; margin-bottom: 12px;">⚡ تحديث نتيجة التذكرة:</h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>نتيجة التذكرة</label>
+            <select class="form-control" id="modalOutcomeAction">
+              <option value="completed_sale">✅ تم البيع للعميل (إضافة للمبيعات + طلب تقييم)</option>
+              <option value="completed_purchase">🤝 تم الشراء من العميل (إضافة لمشتريات المتجر)</option>
+              <option value="cancelled_no_buy">❌ لم يتم الشراء (تسجيل في إحصائيات عدم الشراء)</option>
+              <option value="closed">🔒 إغلاق عادي (استفسار / دعم)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>المبلغ</label>
+            <input type="number" class="form-control" id="modalOutcomeAmount" placeholder="0" />
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>المنتج أو الغرض</label>
+            <input type="text" class="form-control" id="modalOutcomeProduct" placeholder="اسم المنتج أو الخدمة" />
+          </div>
+          <div class="form-group">
+            <label>سبب عدم الشراء (في حال عدم الشراء)</label>
+            <input type="text" class="form-control" id="modalOutcomeReason" placeholder="السعر غير مناسب / العميل لم يرد..." />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>ملاحظات الإدارة</label>
+          <input type="text" class="form-control" id="modalOutcomeNotes" placeholder="ملاحظات إضافية..." />
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <label style="font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="modalCloseDiscordChannel" />
+            <span>حذف روم التذكرة من الديسكورد بعد الحفظ</span>
+          </label>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-danger btn-sm" onclick="deleteCurrentTicket()">
+              <i class="fa-solid fa-trash"></i> حذف السجل
+            </button>
+            <button class="btn btn-success" onclick="saveTicketOutcome()">
+              <i class="fa-solid fa-check-double"></i> اعتماد النتيجة وتحديث الإحصائيات
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- مودال تسجيل عملية فورية -->
+  <div class="modal-backdrop" id="newDealModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>➕ تسجيل عملية جديدة (بيع / شراء / عدم شراء)</h3>
+        <button class="btn btn-outline btn-sm" onclick="closeModal('newDealModal')">✕</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>اسم العميل في الديسكورد</label>
+          <input type="text" class="form-control" id="newDealUser" placeholder="مثال: ahmed_99" />
+        </div>
+        <div class="form-group">
+          <label>المسؤول / البائع</label>
+          <input type="text" class="form-control" id="newDealStaff" value="الإدارة" />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>نوع العملية</label>
+          <select class="form-control" id="newDealStatus">
+            <option value="completed_sale">✅ عملية بيع ناجحة</option>
+            <option value="completed_purchase">🤝 عملية شراء من عضو للمتجر</option>
+            <option value="cancelled_no_buy">❌ تذكرة لم يتم الشراء فيها</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>المبلغ</label>
+          <input type="number" class="form-control" id="newDealAmount" placeholder="50" />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>اسم المنتج / الغرض</label>
+          <input type="text" class="form-control" id="newDealProduct" placeholder="مثال: نيترو قيمنق شهر" />
+        </div>
+        <div class="form-group">
+          <label>سبب عدم الشراء (إن كانت ملغية)</label>
+          <input type="text" class="form-control" id="newDealReason" placeholder="السعر غير مناسب / العميل لم يرد..." />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>ملاحظات</label>
+        <input type="text" class="form-control" id="newDealNotes" placeholder="تفاصيل إضافية..." />
+      </div>
+      <button class="btn btn-primary" onclick="submitNewDeal()">
+        <i class="fa-solid fa-check"></i> حفظ العملية في الإحصائيات
+      </button>
+    </div>
+  </div>
+
+  <!-- مودال إضافة تقييم -->
+  <div class="modal-backdrop" id="addReviewModal">
+    <div class="modal-box" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3>⭐ إضافة تقييم عميل</h3>
+        <button class="btn btn-outline btn-sm" onclick="closeModal('addReviewModal')">✕</button>
+      </div>
+      <div class="form-group">
+        <label>اسم العميل</label>
+        <input type="text" class="form-control" id="revUserTag" placeholder="مثال: khalid_vip" />
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>المنتج</label>
+          <input type="text" class="form-control" id="revProduct" placeholder="نيترو قيمنق" />
+        </div>
+        <div class="form-group">
+          <label>عدد النجوم</label>
+          <select class="form-control" id="revRating">
+            <option value="5">5 نجوم ⭐⭐⭐⭐⭐</option>
+            <option value="4">4 نجوم ⭐⭐⭐⭐</option>
+            <option value="3">3 نجوم ⭐⭐⭐</option>
+            <option value="2">نجمتان ⭐⭐</option>
+            <option value="1">نجمة واحدة ⭐</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>تعليق ورأي العميل</label>
+        <textarea class="form-control" id="revComment" placeholder="خدمة سريعة وممتازة..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="submitNewReview()">
+        <i class="fa-solid fa-check"></i> حفظ التقييم
+      </button>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
