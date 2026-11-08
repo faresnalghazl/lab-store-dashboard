@@ -45,6 +45,10 @@ const viewTitles = {
   'bot-control': {
     title: 'مركز التحكم بالبوتات والأدوات الذكية 🤖',
     sub: 'ربط التوكن، التحكم بحالة البوتات، الخط التلقائي متعدد الرومات، والرد التلقائي'
+  },
+  'admins': {
+    title: 'طاقم الإدارة والصلاحيات 👥',
+    sub: 'إدارة وتصريح حسابات الإداريين لدخول لوحة التحكم وتوزيع الصلاحيات'
   }
 };
 
@@ -58,8 +62,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!currentLoginRequestId || currentLoginRequestId === requestId) {
       localStorage.setItem('labstore_discord_token', sessionToken);
       document.getElementById('authOverlay').classList.add('hidden');
-      if (user?.username) {
-        document.getElementById('topOwnerName').textContent = `${user.username} (${user.id})`;
+      if (user) {
+        updateUserSidebarProfile(user);
       }
       showToast('تم تأكيد الدخول من حسابك في الديسكورد بنجاح! 🎉');
       refreshAllData();
@@ -72,6 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentView === 'tickets') loadTickets();
     if (currentView === 'reviews') loadReviews();
     if (currentView === 'products') loadProducts();
+    if (currentView === 'admins') loadAdminsList();
   });
 
   socket.on('bot:status', statusInfo => {
@@ -86,7 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ==========================================================
-// نظام المصادقة عبر حساب الديسكورد الخاص بالمالك فقط (790676969418522664)
+// نظام المصادقة وإدارة حسابات الإداريين
 // ==========================================================
 function getAuthToken() {
   return localStorage.getItem('labstore_discord_token') || '';
@@ -111,6 +116,37 @@ function handleOAuthUrlParams() {
   }
 }
 
+function updateUserSidebarProfile(user) {
+  if (!user) return;
+  const avatarEl = document.getElementById('sidebarUserAvatar');
+  const nameEl = document.getElementById('sidebarUserName');
+  const roleEl = document.getElementById('sidebarUserRole');
+  const dotEl = document.getElementById('sidebarUserStatusDot');
+
+  if (avatarEl && user.avatar) avatarEl.src = user.avatar;
+  if (nameEl) nameEl.textContent = user.username || user.id || 'إداري المتجر';
+  if (roleEl) {
+    roleEl.textContent = user.isPrimary ? '👑 إداري أساسي' : '🛡️ إداري المتجر';
+    roleEl.style.color = user.isPrimary ? '#ffd700' : 'var(--text-secondary)';
+  }
+  if (dotEl) {
+    dotEl.className = 'status-dot connected';
+    dotEl.title = 'حساب ديسكورد متصل';
+  }
+
+  const addNotice = document.getElementById('adminAddNotice');
+  const addBtn = document.getElementById('btnAddAdmin');
+  if (addNotice && addBtn) {
+    if (user.isPrimary) {
+      addNotice.style.display = 'none';
+      addBtn.style.display = 'inline-flex';
+    } else {
+      addNotice.style.display = 'block';
+      addBtn.style.display = 'none';
+    }
+  }
+}
+
 async function checkDiscordAuthStatus() {
   try {
     const res = await fetch('/api/auth/status', {
@@ -118,19 +154,9 @@ async function checkDiscordAuthStatus() {
     });
     const data = await res.json();
 
-    if (data.ownerProfile) {
-      const p = data.ownerProfile;
-      const lbl = document.getElementById('authOwnerLabel');
-      if (lbl) {
-        lbl.textContent = `الحساب المصرّح: ${p.username !== 'Owner' ? p.username + ' • ' : ''}${data.ownerDiscordId}`;
-      }
-    }
-
-    if (data.authenticated) {
+    if (data.authenticated && data.sessionUser) {
       document.getElementById('authOverlay').classList.add('hidden');
-      if (data.sessionUser) {
-        document.getElementById('topOwnerName').textContent = `${data.sessionUser.username} (${data.sessionUser.id})`;
-      }
+      updateUserSidebarProfile(data.sessionUser);
       await refreshAllData();
     } else {
       document.getElementById('authOverlay').classList.remove('hidden');
@@ -229,6 +255,9 @@ function switchView(viewName) {
     loadAutoResponders();
     loadSubBots();
   }
+  if (viewName === 'admins') {
+    loadAdminsList();
+  }
 }
 
 function initFilterPills() {
@@ -276,6 +305,7 @@ async function refreshAllData() {
   if (currentView === 'products') await loadProducts();
   if (currentView === 'reviews') await loadReviews();
   if (currentView === 'ticket-setup') await loadCategories();
+  if (currentView === 'admins') await loadAdminsList();
 }
 
 // ==========================================================
@@ -1677,4 +1707,121 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ==========================================================
+// 8. إدارة طاقم الإدارة والصلاحيات (Admins Management)
+// ==========================================================
+let currentAdminsCache = [];
+let isCurrentCallerPrimary = false;
+
+async function loadAdminsList() {
+  const tbody = document.getElementById('adminsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin"></i> جاري جلب قائمة الإداريين...</td></tr>`;
+
+  try {
+    const data = await apiFetch('/api/admins');
+    if (!data.ok) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px; color: #ef4444;"><i class="fa-solid fa-circle-exclamation"></i> ${escapeHtml(data.message || 'تعذر تحميل الإداريين')}</td></tr>`;
+      return;
+    }
+
+    currentAdminsCache = data.admins || [];
+    isCurrentCallerPrimary = Boolean(data.isCallerPrimary);
+
+    const addNotice = document.getElementById('adminAddNotice');
+    const addBtn = document.getElementById('btnAddAdmin');
+    if (addNotice && addBtn) {
+      if (isCurrentCallerPrimary) {
+        addNotice.style.display = 'none';
+        addBtn.style.display = 'inline-flex';
+      } else {
+        addNotice.style.display = 'block';
+        addBtn.style.display = 'none';
+      }
+    }
+
+    if (currentAdminsCache.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">لا يوجد إداريون مضافون حالياً</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = currentAdminsCache.map(admin => {
+      const isOwner = admin.isPrimary;
+      const roleBadge = isOwner
+        ? `<span class="badge" style="background: rgba(255, 215, 0, 0.15); color: #ffd700; border: 1px solid rgba(255, 215, 0, 0.35);"><i class="fa-solid fa-crown"></i> إداري أساسي</span>`
+        : `<span class="badge badge-info"><i class="fa-solid fa-shield-halved"></i> إداري</span>`;
+
+      const actionBtn = isOwner
+        ? `<span style="font-size: 11.5px; color: #a8a8a2; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-lock"></i> مثبت دائماً</span>`
+        : (isCurrentCallerPrimary
+            ? `<button class="btn btn-outline btn-sm" style="color: #ef4444; border-color: rgba(239,68,68,0.3);" onclick="deleteAdminAction(${admin.id}, '${escapeHtml(admin.username || admin.discord_id)}')">
+                 <i class="fa-solid fa-trash"></i> إزالة
+               </button>`
+            : `<span style="font-size: 11.5px; color: #71717a;">لا تملك صلاحية</span>`
+          );
+
+      const formattedDate = admin.created_at ? formatShortDate(admin.created_at) : '-';
+
+      return `
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <img src="${admin.avatar || '/images/logo.png'}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);" onerror="this.src='/images/logo.png'" />
+              <div style="font-weight: 700;">${escapeHtml(admin.username || 'مستخدم ديسكورد')}</div>
+            </div>
+          </td>
+          <td><code style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 6px; font-size: 12px;">${escapeHtml(admin.discord_id)}</code></td>
+          <td>${roleBadge}</td>
+          <td>${escapeHtml(admin.note || '-')}</td>
+          <td>${escapeHtml(admin.added_by || 'المالك')}</td>
+          <td style="font-size: 12px; color: var(--text-secondary);">${formattedDate}</td>
+          <td>${actionBtn}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px; color: #ef4444;"><i class="fa-solid fa-circle-exclamation"></i> خطأ: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function submitNewAdmin() {
+  const discordIdInput = document.getElementById('newAdminDiscordId');
+  const noteInput = document.getElementById('newAdminNote');
+  const discordId = (discordIdInput?.value || '').trim();
+  const note = (noteInput?.value || '').trim();
+
+  if (!discordId) {
+    return showToast('يرجى كتابة آيدي حساب الديسكورد (Discord User ID)', 'error');
+  }
+  if (!/^\d{17,20}$/.test(discordId)) {
+    return showToast('آيدي الديسكورد غير صالح. يجب أن يتكون من 17-20 رقماً', 'error');
+  }
+
+  const res = await apiFetch('/api/admins', {
+    method: 'POST',
+    body: JSON.stringify({ discord_id: discordId, note })
+  });
+
+  if (res.ok) {
+    showToast(res.message || 'تمت إضافة وتصريح الإداري بنجاح!');
+    if (discordIdInput) discordIdInput.value = '';
+    if (noteInput) noteInput.value = '';
+    await loadAdminsList();
+  } else {
+    showToast(res.message || 'فشلت إضافة الإداري', 'error');
+  }
+}
+
+async function deleteAdminAction(id, name) {
+  if (!confirm(`هل أنت متأكد من رغبتك في إزالة الإداري (${name}) من لوحة التحكم؟`)) return;
+
+  const res = await apiFetch(`/api/admins/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    showToast('تمت إزالة الإداري من لوحة التحكم بنجاح');
+    await loadAdminsList();
+  } else {
+    showToast(res.message || 'فشلت الإزالة', 'error');
+  }
 }
