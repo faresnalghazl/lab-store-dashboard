@@ -864,15 +864,30 @@ class BotManager {
         } catch (_) {}
       }
 
+      const prodWelcome = (product.welcome_message && product.welcome_message.trim())
+        ? product.welcome_message.trim()
+        : (product.description || 'بانتظار إتمام الدفع والتسليم من قبل ممثل المبيعات.');
+
+      const prodBanner = (product.welcome_image && product.welcome_image.trim())
+        ? product.welcome_image.trim()
+        : (product.image_url && product.image_url.trim())
+          ? product.image_url.trim()
+          : '';
+
       const embed = new EmbedBuilder()
-        .setTitle('🛍️ تم تحديد المنتج في التذكرة')
+        .setTitle(`🛍️ تم تحديد المنتج: ${product.name}`)
         .setColor(product.embed_color || '#2b2d31')
+        .setDescription(prodWelcome)
         .addFields(
-          { name: 'المنتج المختار', value: product.name, inline: true },
-          { name: 'السعر', value: `${product.price} ${product.currency}`, inline: true },
-          { name: 'المخزون المتاح', value: product.stock === -1 ? 'غير محدود' : String(product.stock), inline: true }
+          { name: '💰 السعر', value: `${product.price} ${product.currency}`, inline: true },
+          { name: '📦 المخزون المتاح', value: product.stock === -1 ? 'متوفر (غير محدود)' : (product.stock > 0 ? `${product.stock} حبة` : 'نفدت الكمية'), inline: true }
         )
-        .setDescription(product.description || 'بانتظار إتمام الدفع والتسليم من قبل ممثل المبيعات.');
+        .setFooter({ text: `${getSetting('store_name', 'Lab Store')} • تم ربط المنتج بالتذكرة` })
+        .setTimestamp();
+
+      if (prodBanner && prodBanner.startsWith('http')) {
+        embed.setImage(prodBanner);
+      }
 
       await interaction.reply({ embeds: [embed] });
       this.emitUpdate('dashboard:update', {});
@@ -1407,10 +1422,31 @@ class BotManager {
     const ticketId = Number(insertRes.lastInsertRowid);
 
     const embedColor = preselectedProduct?.embed_color || category.embed_color || getSetting('ticket_panel_color', '#2b2d31');
+
+    // ترحيب التذكرة: أولوية لترحيب المنتج الخاص به إذا وجد، ثم ترحيب القسم، ثم النص الافتراضي
+    const welcomeGreeting = (preselectedProduct?.welcome_message && preselectedProduct.welcome_message.trim())
+      ? preselectedProduct.welcome_message.trim()
+      : (category.welcome_message && category.welcome_message.trim())
+        ? category.welcome_message.trim()
+        : 'أهلاً بك! سيقوم فريق المبيعات بالرد عليك في أقرب وقت.';
+
+    // صورة أو بنر الترحيب: أولوية لصورة ترحيب المنتج، ثم صورة المنتج نفسه، ثم بنر القسم
+    const welcomeBanner = (preselectedProduct?.welcome_image && preselectedProduct.welcome_image.trim())
+      ? preselectedProduct.welcome_image.trim()
+      : (preselectedProduct?.image_url && preselectedProduct.image_url.trim())
+        ? preselectedProduct.image_url.trim()
+        : (category.banner_url && category.banner_url.trim())
+          ? category.banner_url.trim()
+          : '';
+
+    const ticketTitle = preselectedProduct
+      ? `${category.emoji || '💎'} تذكرة #${nextNum} — ${preselectedProduct.name}`
+      : `${category.emoji || '💎'} تذكرة #${nextNum} — ${category.name}`;
+
     const embed = new EmbedBuilder()
-      .setTitle(`${category.emoji || '💎'} تذكرة #${nextNum} — ${category.name}`)
+      .setTitle(ticketTitle)
       .setDescription(
-        `${category.welcome_message || 'أهلاً بك! سيقوم فريق المبيعات بالرد عليك في أقرب وقت.'}\n\n` +
+        `${welcomeGreeting}\n\n` +
         `👤 **العميل:** <@${interaction.user.id}>\n` +
         `📂 **القسم:** ${category.name}\n` +
         (preselectedProduct ? `🛍️ **المنتج المطلوب:** ${preselectedProduct.name} (\`${preselectedProduct.price} ${preselectedProduct.currency}\`)\n` : '') +
@@ -1420,8 +1456,8 @@ class BotManager {
       .setFooter({ text: `${getSetting('store_name', 'Lab Store')} • لوحة التحكم بالتذكرة` })
       .setTimestamp();
 
-    if (category.banner_url && category.banner_url.startsWith('http')) {
-      embed.setImage(category.banner_url);
+    if (welcomeBanner && welcomeBanner.startsWith('http')) {
+      embed.setImage(welcomeBanner);
     }
 
     const components = [];
@@ -2101,7 +2137,7 @@ class BotManager {
     return { total: count };
   }
 
-  async startBroadcast({ title, message, imageUrl, buttonText, buttonUrl, targetRoleId, delayMs = 1500, createdBy = 'الإدارة' }) {
+  async startBroadcast({ title, message, imageUrl, buttonText, buttonUrl, targetRoleId, delayMs = 1500, embedColor = '#5865F2', createdBy = 'الإدارة' }) {
     if (!this.client || !this.client.isReady()) {
       throw new Error('البوت غير متصل حالياً، يرجى تشغيل البوت وربطه بالسيرفر أولاً.');
     }
@@ -2141,10 +2177,12 @@ class BotManager {
       throw new Error('لم يتم العثور على أي أعضاء مؤهلين للاستلام حسب الفلتر المحدد.');
     }
 
+    const color = (embedColor || '').trim() || '#5865F2';
+
     // حفظ الحملة في قاعدة البيانات
     const res = db.prepare(`
-      INSERT INTO broadcasts (title, message, image_url, button_text, button_url, target_role_id, status, total_count, sent_count, failed_count, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, 'running', ?, 0, 0, ?)
+      INSERT INTO broadcasts (title, message, image_url, button_text, button_url, target_role_id, embed_color, status, total_count, sent_count, failed_count, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, 0, 0, ?)
     `).run(
       (title || '').trim(),
       cleanMsg,
@@ -2152,6 +2190,7 @@ class BotManager {
       (buttonText || '').trim(),
       (buttonUrl || '').trim(),
       (targetRoleId || '').trim(),
+      color,
       targetMembers.length,
       createdBy
     );
@@ -2167,6 +2206,7 @@ class BotManager {
       buttonText: (buttonText || '').trim(),
       buttonUrl: (buttonUrl || '').trim(),
       targetRoleId: (targetRoleId || '').trim(),
+      embedColor: color,
       total: targetMembers.length,
       sent: 0,
       failed: 0,
@@ -2195,7 +2235,7 @@ class BotManager {
         // تجهيز محتوى الرسالة
         const payload = {};
         const embed = new EmbedBuilder()
-          .setColor('#5865F2')
+          .setColor(color)
           .setDescription(cleanMsg);
 
         if (title && title.trim()) {

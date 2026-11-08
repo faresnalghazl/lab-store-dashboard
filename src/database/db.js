@@ -78,6 +78,8 @@ function initDatabase() {
       button_emoji TEXT DEFAULT '💎',
       button_style TEXT DEFAULT 'Secondary',
       staff_role_id TEXT DEFAULT '',
+      welcome_message TEXT DEFAULT '',
+      welcome_image TEXT DEFAULT '',
       active INTEGER DEFAULT 1,
       sales_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
@@ -178,6 +180,7 @@ function initDatabase() {
       button_text TEXT DEFAULT '',
       button_url TEXT DEFAULT '',
       target_role_id TEXT DEFAULT '',
+      embed_color TEXT DEFAULT '#5865F2',
       status TEXT DEFAULT 'pending',
       total_count INTEGER DEFAULT 0,
       sent_count INTEGER DEFAULT 0,
@@ -200,6 +203,9 @@ function initDatabase() {
   ensureColumn('products', 'button_emoji', "TEXT DEFAULT '💎'");
   ensureColumn('products', 'button_style', "TEXT DEFAULT 'Secondary'");
   ensureColumn('products', 'staff_role_id', "TEXT DEFAULT ''");
+  ensureColumn('products', 'welcome_message', "TEXT DEFAULT ''");
+  ensureColumn('products', 'welcome_image', "TEXT DEFAULT ''");
+  ensureColumn('broadcasts', 'embed_color', "TEXT DEFAULT '#5865F2'");
   ensureColumn('auth_sessions', 'role', "TEXT DEFAULT 'admin'");
 
   // تثبيت المالك الأساسي في جدول الإداريين (غير قابل للحذف)

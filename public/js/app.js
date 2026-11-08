@@ -1001,6 +1001,18 @@ async function loadProducts() {
                 ${roleOptionsHtml}
               </select>
             </div>
+
+            <!-- ترحيب وصورة التذكرة المخصصة لهذا المنتج -->
+            <div style="background: rgba(88,101,242,0.06); border: 1px solid rgba(88,101,242,0.2); border-radius: 8px; padding: 8px 10px; margin-top: 8px;">
+              <div style="font-size: 11.5px; font-weight: 700; color: #a5b4fc; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
+                <span>💬 ترحيب التذكرة الخاص بهذا المنتج:</span>
+                <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 11px;" onclick="saveProductTicketGreeting(${p.id})">
+                  <i class="fa-solid fa-floppy-disk"></i> حفظ
+                </button>
+              </div>
+              <textarea class="form-control" id="prodWelcomeMsg_${p.id}" rows="2" style="font-size: 12px; margin-bottom: 6px;" placeholder="اكتب كلام الترحيب الذي يظهر للعميل في التذكرة عند طلب هذا المنتج...">${escapeHtml(p.welcome_message || '')}</textarea>
+              <input type="url" class="form-control" id="prodWelcomeImg_${p.id}" value="${escapeHtml(p.welcome_image || '')}" style="font-size: 11.5px;" placeholder="رابط بنر ترحيب التذكرة (https://...)" />
+            </div>
           </div>
 
           <div style="display:flex; gap:8px; justify-content:space-between; border-top:1px solid var(--border-color); padding-top:12px; margin-top:10px;">
@@ -1025,6 +1037,24 @@ async function updateProductStaffRole(productId) {
   });
   if (res.ok) {
     showToast('تم تحديث الرتبة المسؤولة عن المنتج بنجاح!');
+  }
+}
+
+async function saveProductTicketGreeting(productId) {
+  const welcomeMsg = document.getElementById(`prodWelcomeMsg_${productId}`)?.value || '';
+  const welcomeImg = document.getElementById(`prodWelcomeImg_${productId}`)?.value || '';
+
+  const res = await apiFetch(`/api/products/${productId}/color`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      welcome_message: welcomeMsg,
+      welcome_image: welcomeImg
+    })
+  });
+  if (res.ok) {
+    showToast('تم حفظ رسالة وصورة ترحيب التذكرة لهذا المنتج بنجاح!');
+  } else {
+    showToast(res.message || 'فشل حفظ ترحيب التذكرة', 'error');
   }
 }
 
@@ -1056,7 +1086,9 @@ async function createProduct() {
     button_label: document.getElementById('prodBtnLabel').value.trim() || name,
     button_emoji: document.getElementById('prodBtnEmoji').value.trim() || '💎',
     button_style: document.getElementById('prodBtnStyle').value || 'Secondary',
-    staff_role_id: document.getElementById('prodStaffRole')?.value || ''
+    staff_role_id: document.getElementById('prodStaffRole')?.value || '',
+    welcome_message: document.getElementById('prodWelcomeMessage')?.value.trim() || '',
+    welcome_image: document.getElementById('prodWelcomeImage')?.value.trim() || ''
   };
 
   const res = await apiFetch('/api/products', {
@@ -1070,6 +1102,8 @@ async function createProduct() {
     document.getElementById('prodPrice').value = '';
     document.getElementById('prodDesc').value = '';
     document.getElementById('prodBtnLabel').value = '';
+    if (document.getElementById('prodWelcomeMessage')) document.getElementById('prodWelcomeMessage').value = '';
+    if (document.getElementById('prodWelcomeImage')) document.getElementById('prodWelcomeImage').value = '';
     const staffRoleEl = document.getElementById('prodStaffRole');
     if (staffRoleEl) staffRoleEl.value = '';
     loadProducts();
@@ -1963,12 +1997,18 @@ function updateBroadcastPreview() {
   const imgUrl = (document.getElementById('broadcastImageUrl')?.value || '').trim();
   const btnText = (document.getElementById('broadcastButtonText')?.value || '').trim();
   const btnUrl = (document.getElementById('broadcastButtonUrl')?.value || '').trim();
+  const embedColor = (document.getElementById('broadcastEmbedColor')?.value || '#5865F2').trim();
 
+  const previewBox = document.getElementById('previewEmbedBox');
   const previewTitle = document.getElementById('previewEmbedTitle');
   const previewDesc = document.getElementById('previewEmbedDesc');
   const previewImg = document.getElementById('previewEmbedImage');
   const previewBtnWrap = document.getElementById('previewButtonWrap');
   const previewBtnText = document.getElementById('previewButtonText');
+
+  if (previewBox) {
+    previewBox.style.borderRightColor = embedColor || '#5865F2';
+  }
 
   if (previewTitle) {
     if (title) {
@@ -2011,6 +2051,7 @@ async function startBroadcastCampaign() {
   const imageUrl = (document.getElementById('broadcastImageUrl')?.value || '').trim();
   const buttonText = (document.getElementById('broadcastButtonText')?.value || '').trim();
   const buttonUrl = (document.getElementById('broadcastButtonUrl')?.value || '').trim();
+  const embedColor = (document.getElementById('broadcastEmbedColor')?.value || '#5865F2').trim();
   const delayMs = Number(document.getElementById('broadcastDelay')?.value || 1500);
 
   if (!message) {
@@ -2043,6 +2084,7 @@ async function startBroadcastCampaign() {
       buttonText,
       buttonUrl,
       targetRoleId: roleId,
+      embedColor,
       delayMs
     })
   });

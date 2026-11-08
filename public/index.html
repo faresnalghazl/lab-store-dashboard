@@ -432,6 +432,20 @@
               </select>
             </div>
 
+            <!-- ترحيب وبنر التذكرة المخصص لهذا المنتج -->
+            <div class="grid-2" style="background: rgba(88,101,242,0.05); padding: 14px; border-radius: 10px; border: 1px solid rgba(88,101,242,0.2); margin-bottom: 14px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>💬 رسالة / كلام ترحيب التذكرة الخاص بهذا المنتج</label>
+                <textarea class="form-control" id="prodWelcomeMessage" rows="2" placeholder="مثال: مرحباً بك! يرجى إرسال الإيميل وطريقة التحويل وسيقوم ممثل المبيعات بتسليمك فوراً."></textarea>
+                <small style="color: var(--text-muted); font-size: 11px;">يظهر ككلام ترحيبي للعميل في بداية التذكرة عند فتحها لطلب هذا المنتج.</small>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>🖼️ رابط صورة / بنر ترحيب التذكرة الخاص بالمنتج (اختياري)</label>
+                <input type="url" class="form-control" id="prodWelcomeImage" placeholder="https://... (صورة ترحيبية داخل التذكرة)" />
+                <small style="color: var(--text-muted); font-size: 11px;">صورة أو بنر يظهر داخل روم التذكرة تحت الترحيب (إن تُرك فارغاً يُستخدم بنر المنتج).</small>
+              </div>
+            </div>
+
             <!-- تخصيص لون الإيمبد وستايل العرض والزر -->
             <div class="form-grid" style="background: rgba(255,255,255,0.025); padding: 14px; border-radius: 10px; border: 1px solid var(--border-color); margin-bottom: 14px;">
               <div class="form-group" style="margin-bottom: 0;">
@@ -823,9 +837,18 @@
                 <span style="font-size: 14px; font-weight: 700; color: var(--accent-emerald);" id="broadcastTargetEstimate">جاري الحساب...</span>
               </div>
 
-              <div class="form-group">
-                <label>عنوان الرسالة (Embed Title) <span style="color: var(--text-muted); font-size: 11px;">(اختياري)</span></label>
-                <input type="text" class="form-control" id="broadcastTitle" placeholder="مثال: عروض وتخفيضات نهاية الأسبوع في Lab Store 🔥" oninput="updateBroadcastPreview()" />
+              <div class="grid-2" style="margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>عنوان الرسالة (Embed Title) <span style="color: var(--text-muted); font-size: 11px;">(اختياري)</span></label>
+                  <input type="text" class="form-control" id="broadcastTitle" placeholder="مثال: عروض وتخفيضات نهاية الأسبوع في Lab Store 🔥" oninput="updateBroadcastPreview()" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>🎨 لون إيمبد الرسالة في الديسكورد (Embed Color)</label>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="color" class="form-control" id="broadcastEmbedColorPicker" value="#5865F2" style="width: 52px; height: 38px; padding: 2px; cursor: pointer;" oninput="document.getElementById('broadcastEmbedColor').value = this.value; updateBroadcastPreview();" />
+                    <input type="text" class="form-control" id="broadcastEmbedColor" value="#5865F2" style="font-family: monospace;" oninput="document.getElementById('broadcastEmbedColorPicker').value = this.value; updateBroadcastPreview();" />
+                  </div>
+                </div>
               </div>
 
               <div class="form-group">
@@ -895,7 +918,7 @@
                 </div>
 
                 <!-- الإيمبد -->
-                <div style="margin-right: 52px; background: #2b2d31; border-right: 4px solid #5865F2; border-radius: 4px 8px 8px 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+                <div id="previewEmbedBox" style="margin-right: 52px; background: #2b2d31; border-right: 4px solid #5865F2; border-radius: 4px 8px 8px 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
                   <h4 id="previewEmbedTitle" style="margin: 0; font-size: 16px; font-weight: 700; color: #f2f3f5;">عروض وتخفيضات نهاية الأسبوع 🔥</h4>
                   <div id="previewEmbedDesc" style="margin: 0; font-size: 14px; line-height: 1.5; color: #dbdee1; white-space: pre-wrap;">أهلاً بك عزيزنا العميل! يسعدنا إعلامك بوصول تشكيلة جديدة من المنتجات مع خصم خاص 20%...</div>
                   

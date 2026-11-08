@@ -651,7 +651,9 @@ router.post('/products', (req, res) => {
       button_label = '',
       button_emoji = '💎',
       button_style = 'Secondary',
-      staff_role_id = ''
+      staff_role_id = '',
+      welcome_message = '',
+      welcome_image = ''
     } = req.body;
 
     if (!name) return res.status(400).json({ ok: false, message: 'اسم المنتج مطلوب.' });
@@ -659,8 +661,9 @@ router.post('/products', (req, res) => {
     db.prepare(`
       INSERT INTO products (
         name, description, price, currency, category, stock, image_url,
-        embed_color, banner_only, button_label, button_emoji, button_style, staff_role_id, active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        embed_color, banner_only, button_label, button_emoji, button_style, staff_role_id,
+        welcome_message, welcome_image, active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).run(
       name,
       description,
@@ -674,7 +677,9 @@ router.post('/products', (req, res) => {
       button_label || name,
       button_emoji || '💎',
       button_style || 'Secondary',
-      staff_role_id || ''
+      staff_role_id || '',
+      welcome_message || '',
+      welcome_image || ''
     );
 
     botManager.emitUpdate('dashboard:update', {});
@@ -686,7 +691,7 @@ router.post('/products', (req, res) => {
 
 router.patch('/products/:id/color', (req, res) => {
   try {
-    const { embed_color, banner_only, button_style, staff_role_id } = req.body;
+    const { embed_color, banner_only, button_style, staff_role_id, welcome_message, welcome_image } = req.body;
     const id = Number(req.params.id);
     if (embed_color) {
       db.prepare('UPDATE products SET embed_color = ? WHERE id = ?').run(embed_color, id);
@@ -700,8 +705,14 @@ router.patch('/products/:id/color', (req, res) => {
     if (staff_role_id !== undefined) {
       db.prepare('UPDATE products SET staff_role_id = ? WHERE id = ?').run(staff_role_id, id);
     }
+    if (welcome_message !== undefined) {
+      db.prepare('UPDATE products SET welcome_message = ? WHERE id = ?').run(welcome_message, id);
+    }
+    if (welcome_image !== undefined) {
+      db.prepare('UPDATE products SET welcome_image = ? WHERE id = ?').run(welcome_image, id);
+    }
     botManager.emitUpdate('dashboard:update', {});
-    res.json({ ok: true, message: 'تم تحديث لون وإعدادات إيمبد المنتج بنجاح!' });
+    res.json({ ok: true, message: 'تم تحديث إعدادات المنتج وترحيب التذكرة بنجاح!' });
   } catch (err) {
     res.status(500).json({ ok: false, message: err.message });
   }
@@ -722,6 +733,8 @@ router.put('/products/:id', (req, res) => {
       button_emoji = '💎',
       button_style = 'Secondary',
       staff_role_id = '',
+      welcome_message = '',
+      welcome_image = '',
       active = 1
     } = req.body;
 
@@ -729,7 +742,8 @@ router.put('/products/:id', (req, res) => {
       UPDATE products
       SET name = ?, description = ?, price = ?, category = ?, stock = ?,
           image_url = ?, embed_color = ?, banner_only = ?, button_label = ?,
-          button_emoji = ?, button_style = ?, staff_role_id = ?, active = ?
+          button_emoji = ?, button_style = ?, staff_role_id = ?,
+          welcome_message = ?, welcome_image = ?, active = ?
       WHERE id = ?
     `).run(
       name,
@@ -744,6 +758,8 @@ router.put('/products/:id', (req, res) => {
       button_emoji || '💎',
       button_style || 'Secondary',
       staff_role_id || '',
+      welcome_message || '',
+      welcome_image || '',
       active ? 1 : 0,
       Number(req.params.id)
     );
@@ -1110,7 +1126,7 @@ router.get('/broadcast/count', async (req, res) => {
 
 router.post('/broadcast/start', async (req, res) => {
   try {
-    const { title, message, imageUrl, buttonText, buttonUrl, targetRoleId, delayMs } = req.body;
+    const { title, message, imageUrl, buttonText, buttonUrl, targetRoleId, delayMs, embedColor } = req.body;
     const createdBy = req.ownerSession?.username || 'إداري المتجر';
     const result = await botManager.startBroadcast({
       title,
@@ -1120,6 +1136,7 @@ router.post('/broadcast/start', async (req, res) => {
       buttonUrl,
       targetRoleId,
       delayMs,
+      embedColor,
       createdBy
     });
     res.json(result);
