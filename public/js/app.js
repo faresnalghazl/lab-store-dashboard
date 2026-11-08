@@ -951,6 +951,9 @@ async function loadProducts() {
     .map(p => {
       const embedColor = p.embed_color || '#2b2d31';
       const isBannerOnly = Number(p.banner_only) === 1;
+      const roleOptionsHtml = `<option value="">-- بدون رتبة مخصصة --</option>` +
+        (guildMetaCache.roles || []).map(r => `<option value="${r.id}" ${p.staff_role_id === r.id ? 'selected' : ''}>@${escapeHtml(r.name)}</option>`).join('');
+
       return `
         <div class="product-card" style="border-right: 4px solid ${escapeHtml(embedColor)};">
           <div>
@@ -976,9 +979,17 @@ async function loadProducts() {
                 <option value="0" ${!isBannerOnly ? 'selected' : ''}>بطاقة كاملة</option>
               </select>
             </div>
+
+            <!-- تحديد الرتبة المسؤولة عن المنتج -->
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:rgba(0,0,0,0.28); padding:8px 10px; border-radius:8px; border:1px solid var(--border-color); margin-top:8px;">
+              <span style="font-size:12px; color:var(--text-secondary);"><i class="fa-solid fa-user-shield"></i> الرتبة المسؤولة:</span>
+              <select class="form-control" id="prodRoleSelect_${p.id}" style="width:auto; max-width: 170px; padding:4px 8px; font-size:11.5px;" onchange="updateProductStaffRole(${p.id})">
+                ${roleOptionsHtml}
+              </select>
+            </div>
           </div>
 
-          <div style="display:flex; gap:8px; justify-content:space-between; border-top:1px solid var(--border-color); padding-top:12px;">
+          <div style="display:flex; gap:8px; justify-content:space-between; border-top:1px solid var(--border-color); padding-top:12px; margin-top:10px;">
             <button class="btn btn-primary btn-sm" onclick="publishProductToDiscord(${p.id})">
               <i class="fa-brands fa-discord"></i> إرسال للديسكورد (${escapeHtml(p.button_label || p.name)})
             </button>
@@ -990,6 +1001,17 @@ async function loadProducts() {
       `;
     })
     .join('');
+}
+
+async function updateProductStaffRole(productId) {
+  const roleId = document.getElementById(`prodRoleSelect_${productId}`)?.value || '';
+  const res = await apiFetch(`/api/products/${productId}/color`, {
+    method: 'PATCH',
+    body: JSON.stringify({ staff_role_id: roleId })
+  });
+  if (res.ok) {
+    showToast('تم تحديث الرتبة المسؤولة عن المنتج بنجاح!');
+  }
 }
 
 async function updateProductEmbedColor(productId) {
@@ -1019,7 +1041,8 @@ async function createProduct() {
     banner_only: document.getElementById('prodBannerOnly').value === '1' ? 1 : 0,
     button_label: document.getElementById('prodBtnLabel').value.trim() || name,
     button_emoji: document.getElementById('prodBtnEmoji').value.trim() || '💎',
-    button_style: document.getElementById('prodBtnStyle').value || 'Secondary'
+    button_style: document.getElementById('prodBtnStyle').value || 'Secondary',
+    staff_role_id: document.getElementById('prodStaffRole')?.value || ''
   };
 
   const res = await apiFetch('/api/products', {
@@ -1033,6 +1056,8 @@ async function createProduct() {
     document.getElementById('prodPrice').value = '';
     document.getElementById('prodDesc').value = '';
     document.getElementById('prodBtnLabel').value = '';
+    const staffRoleEl = document.getElementById('prodStaffRole');
+    if (staffRoleEl) staffRoleEl.value = '';
     loadProducts();
   } else {
     showToast(res.message || 'أدخل اسم المنتج', 'error');

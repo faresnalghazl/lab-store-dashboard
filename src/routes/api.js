@@ -650,7 +650,8 @@ router.post('/products', (req, res) => {
       banner_only = 0,
       button_label = '',
       button_emoji = '💎',
-      button_style = 'Secondary'
+      button_style = 'Secondary',
+      staff_role_id = ''
     } = req.body;
 
     if (!name) return res.status(400).json({ ok: false, message: 'اسم المنتج مطلوب.' });
@@ -658,8 +659,8 @@ router.post('/products', (req, res) => {
     db.prepare(`
       INSERT INTO products (
         name, description, price, currency, category, stock, image_url,
-        embed_color, banner_only, button_label, button_emoji, button_style, active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        embed_color, banner_only, button_label, button_emoji, button_style, staff_role_id, active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).run(
       name,
       description,
@@ -672,7 +673,8 @@ router.post('/products', (req, res) => {
       banner_only ? 1 : 0,
       button_label || name,
       button_emoji || '💎',
-      button_style || 'Secondary'
+      button_style || 'Secondary',
+      staff_role_id || ''
     );
 
     botManager.emitUpdate('dashboard:update', {});
@@ -684,7 +686,7 @@ router.post('/products', (req, res) => {
 
 router.patch('/products/:id/color', (req, res) => {
   try {
-    const { embed_color, banner_only, button_style } = req.body;
+    const { embed_color, banner_only, button_style, staff_role_id } = req.body;
     const id = Number(req.params.id);
     if (embed_color) {
       db.prepare('UPDATE products SET embed_color = ? WHERE id = ?').run(embed_color, id);
@@ -694,6 +696,9 @@ router.patch('/products/:id/color', (req, res) => {
     }
     if (button_style) {
       db.prepare('UPDATE products SET button_style = ? WHERE id = ?').run(button_style, id);
+    }
+    if (staff_role_id !== undefined) {
+      db.prepare('UPDATE products SET staff_role_id = ? WHERE id = ?').run(staff_role_id, id);
     }
     botManager.emitUpdate('dashboard:update', {});
     res.json({ ok: true, message: 'تم تحديث لون وإعدادات إيمبد المنتج بنجاح!' });
@@ -716,6 +721,7 @@ router.put('/products/:id', (req, res) => {
       button_label = '',
       button_emoji = '💎',
       button_style = 'Secondary',
+      staff_role_id = '',
       active = 1
     } = req.body;
 
@@ -723,7 +729,7 @@ router.put('/products/:id', (req, res) => {
       UPDATE products
       SET name = ?, description = ?, price = ?, category = ?, stock = ?,
           image_url = ?, embed_color = ?, banner_only = ?, button_label = ?,
-          button_emoji = ?, button_style = ?, active = ?
+          button_emoji = ?, button_style = ?, staff_role_id = ?, active = ?
       WHERE id = ?
     `).run(
       name,
@@ -737,6 +743,7 @@ router.put('/products/:id', (req, res) => {
       button_label || name,
       button_emoji || '💎',
       button_style || 'Secondary',
+      staff_role_id || '',
       active ? 1 : 0,
       Number(req.params.id)
     );

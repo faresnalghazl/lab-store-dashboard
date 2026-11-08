@@ -24,7 +24,8 @@ const {
   getSetting,
   setSetting,
   addActivityLog,
-  getDashboardStats
+  getDashboardStats,
+  isAuthorizedAdmin
 } = require('../database/db');
 
 const OWNER_DISCORD_ID = '790676969418522664';
@@ -603,13 +604,48 @@ class BotManager {
     });
   }
 
+  isStaffMember(interaction, ticket = null) {
+    if (!interaction.member) return false;
+    // 1) Administrator or Server Owner or Bot Owner
+    if (interaction.member.permissions?.has(PermissionFlagsBits.Administrator)) return true;
+    if (interaction.user.id === OWNER_DISCORD_ID) return true;
+    if (interaction.guild && interaction.user.id === interaction.guild.ownerId) return true;
+
+    // 2) Site Admin list
+    if (isAuthorizedAdmin(interaction.user.id)) return true;
+
+    // 3) General Staff Roles from settings
+    const staffRoleIds = (getSetting('staff_role_ids') || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    // 4) Category staff role
+    if (ticket?.category_id) {
+      const cat = db.prepare('SELECT staff_role_id FROM ticket_categories WHERE id = ?').get(ticket.category_id);
+      if (cat?.staff_role_id) staffRoleIds.push(cat.staff_role_id);
+    }
+
+    // 5) Product staff role
+    if (ticket?.product_id) {
+      const prod = db.prepare('SELECT staff_role_id FROM products WHERE id = ?').get(ticket.product_id);
+      if (prod?.staff_role_id) staffRoleIds.push(prod.staff_role_id);
+    }
+
+    for (const roleId of staffRoleIds) {
+      if (roleId && interaction.member.roles?.cache?.has(roleId)) return true;
+    }
+
+    return false;
+  }
+
   async _handleSlashCommand(interaction) {
     const { commandName } = interaction;
 
     if (commandName === 'login') {
-      if (interaction.user.id !== OWNER_DISCORD_ID) {
+      if (interaction.user.id !== OWNER_DISCORD_ID && !isAuthorizedAdmin(interaction.user.id)) {
         return interaction.reply({
-          content: `⛔ عذراً، الدخول للداشبورد مصرح فقط لمالك المتجر (<@${OWNER_DISCORD_ID}>).`,
+          content: `⛔ عذراً، الدخول للداشبورد مصرح فقط لإدارة المتجر المصرح لهم.`,
           flags: 64
         });
       }
@@ -719,6 +755,10 @@ class BotManager {
         return interaction.reply({ content: '❌ هذا الروم ليس تذكرة مسجلة في النظام.', flags: 64 });
       }
 
+      if (!this.isStaffMember(interaction, ticket)) {
+        return interaction.reply({ content: '⛔ عذراً، هذا الأمر مخصص لطاقم إدارة المتجر والمسؤولين فقط.', flags: 64 });
+      }
+
       if (commandName === 'sale') {
         const amount = interaction.options.getNumber('amount');
         const product = interaction.options.getString('product');
@@ -794,6 +834,19 @@ class BotManager {
       db.prepare('UPDATE tickets SET product_id = ?, product_name = ?, amount = ? WHERE id = ?')
         .run(product.id, product.name, product.price, ticketId);
 
+      // إذا كان للمنتج رتبة مسؤولة، نقوم بإضافتها إلى صلاحيات روم التذكرة وإشعارها
+      if (product.staff_role_id && interaction.guild && interaction.channel) {
+        try {
+          await interaction.channel.permissionOverwrites.edit(product.staff_role_id, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+            ManageMessages: true
+          });
+          await interaction.channel.send({ content: `🔔 تنبيه لمسؤولي هذا المنتج: <@&${product.staff_role_id}>` });
+        } catch (_) {}
+      }
+
       const embed = new EmbedBuilder()
         .setTitle('🛍️ تم تحديد المنتج في التذكرة')
         .setColor(product.embed_color || '#2b2d31')
@@ -813,11 +866,11 @@ class BotManager {
   async _handleButton(interaction) {
     const { customId } = interaction;
 
-    // 0) زر تأكيد تسجيل الدخول للداشبورد (خاص بالمالك 790676969418522664 فقط)
+    // 0) زر تأكيد تسجيل الدخول للداشبورد (خاص بالمالك أو الإداريين المصرح لهم)
     if (customId.startsWith('approve_login_')) {
-      if (interaction.user.id !== OWNER_DISCORD_ID) {
+      if (interaction.user.id !== OWNER_DISCORD_ID && !isAuthorizedAdmin(interaction.user.id)) {
         return interaction.reply({
-          content: '⛔ غير مصرح لك بتأكيد الدخول. هذه اللوحة خاصة بمالك المتجر فقط.',
+          content: '⛔ غير مصرح لك بتأكيد الدخول. هذه اللوحة خاصة بإدارة المتجر فقط.',
           flags: 64
         });
       }
@@ -869,6 +922,13 @@ class BotManager {
       const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
       if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة.', flags: 64 });
 
+      if (!this.isStaffMember(interaction, ticket)) {
+        return interaction.reply({
+          content: '⛔ عذراً، هذا الإجراء مخصص لطاقم إدارة ومسؤولي المتجر فقط.',
+          flags: 64
+        });
+      }
+
       db.prepare(`
         UPDATE tickets SET status = 'claimed', claimed_by_id = ?, claimed_by_tag = ? WHERE id = ?
       `).run(interaction.user.id, interaction.user.tag, ticketId);
@@ -892,6 +952,13 @@ class BotManager {
       const ticketId = Number(customId.replace('ticket_sale_', ''));
       const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
       if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة.', flags: 64 });
+
+      if (!this.isStaffMember(interaction, ticket)) {
+        return interaction.reply({
+          content: '⛔ عذراً، تسجيل إتمام البيع مخصص لطاقم إدارة ومسؤولي المتجر فقط.',
+          flags: 64
+        });
+      }
 
       const modal = new ModalBuilder()
         .setCustomId(`modal_sale_${ticketId}`)
@@ -932,6 +999,16 @@ class BotManager {
     // 5) زر إتمام شراء من العميل
     if (customId.startsWith('ticket_purchase_')) {
       const ticketId = Number(customId.replace('ticket_purchase_', ''));
+      const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
+      if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة.', flags: 64 });
+
+      if (!this.isStaffMember(interaction, ticket)) {
+        return interaction.reply({
+          content: '⛔ عذراً، هذا الإجراء مخصص لطاقم إدارة ومسؤولي المتجر فقط.',
+          flags: 64
+        });
+      }
+
       const modal = new ModalBuilder()
         .setCustomId(`modal_purchase_${ticketId}`)
         .setTitle('🤝 تسجيل عملية شراء للمتجر من العميل');
@@ -968,6 +1045,16 @@ class BotManager {
     // 6) زر لم يتم الشراء
     if (customId.startsWith('ticket_nobuy_')) {
       const ticketId = Number(customId.replace('ticket_nobuy_', ''));
+      const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
+      if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة.', flags: 64 });
+
+      if (!this.isStaffMember(interaction, ticket)) {
+        return interaction.reply({
+          content: '⛔ عذراً، هذا الإجراء مخصص لطاقم إدارة ومسؤولي المتجر فقط.',
+          flags: 64
+        });
+      }
+
       const modal = new ModalBuilder()
         .setCustomId(`modal_nobuy_${ticketId}`)
         .setTitle('❌ تسجيل عدم إتمام الشراء');
@@ -998,6 +1085,16 @@ class BotManager {
       const ticketId = Number(customId.replace('ticket_close_', ''));
       const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
       if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة.', flags: 64 });
+
+      const isBuyer = String(interaction.user.id) === String(ticket.user_id);
+      const isStaff = this.isStaffMember(interaction, ticket);
+
+      if (!isBuyer && !isStaff) {
+        return interaction.reply({
+          content: '⛔ عذراً، هذا الإجراء مخصص لصاحب التذكرة أو طاقم إدارة المتجر فقط.',
+          flags: 64
+        });
+      }
 
       if (ticket.status === 'open' || ticket.status === 'claimed') {
         db.prepare(`UPDATE tickets SET status = 'closed', closed_at = datetime('now', 'localtime') WHERE id = ?`).run(ticketId);
@@ -1229,6 +1326,7 @@ class BotManager {
       .map(s => s.trim())
       .filter(Boolean);
     if (category.staff_role_id) staffRoleIds.push(category.staff_role_id);
+    if (preselectedProduct?.staff_role_id) staffRoleIds.push(preselectedProduct.staff_role_id);
 
     for (const rId of [...new Set(staffRoleIds)]) {
       if (interaction.guild.roles.cache.has(rId)) {

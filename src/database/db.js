@@ -77,6 +77,7 @@ function initDatabase() {
       button_label TEXT DEFAULT '',
       button_emoji TEXT DEFAULT '💎',
       button_style TEXT DEFAULT 'Secondary',
+      staff_role_id TEXT DEFAULT '',
       active INTEGER DEFAULT 1,
       sales_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
@@ -181,6 +182,7 @@ function initDatabase() {
   ensureColumn('products', 'button_label', "TEXT DEFAULT ''");
   ensureColumn('products', 'button_emoji', "TEXT DEFAULT '💎'");
   ensureColumn('products', 'button_style', "TEXT DEFAULT 'Secondary'");
+  ensureColumn('products', 'staff_role_id', "TEXT DEFAULT ''");
   ensureColumn('auth_sessions', 'role', "TEXT DEFAULT 'admin'");
 
   // تثبيت المالك الأساسي في جدول الإداريين (غير قابل للحذف)
