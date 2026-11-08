@@ -39,6 +39,23 @@ class BotManager {
     this.limitedIntentsMode = false;
     this.subClients = new Map();
     this.pendingLoginRequests = new Map(); // requestId -> { code, createdAt, approved, sessionToken, user }
+    this.broadcastState = {
+      isRunning: false,
+      campaignId: null,
+      title: '',
+      message: '',
+      imageUrl: '',
+      buttonText: '',
+      buttonUrl: '',
+      targetRoleId: '',
+      total: 0,
+      sent: 0,
+      failed: 0,
+      currentMember: '',
+      status: 'idle',
+      startedAt: null,
+      finishedAt: null
+    };
   }
 
   setSocketIO(io) {
@@ -2052,6 +2069,235 @@ class BotManager {
         liveError: live?.error || ''
       };
     });
+  }
+
+  // ==========================================
+  // نظام البرودكاست والرسائل الجماعية في الخاص (Mass DM)
+  // ==========================================
+  getBroadcastStatus() {
+    const history = db.prepare('SELECT * FROM broadcasts ORDER BY id DESC LIMIT 15').all();
+    return {
+      active: this.broadcastState,
+      history
+    };
+  }
+
+  async getBroadcastTargetCount(targetRoleId = '') {
+    const guild = this.getActiveGuild();
+    if (!guild) return { total: 0 };
+    let membersCollection;
+    try {
+      membersCollection = await guild.members.fetch();
+    } catch (_) {
+      membersCollection = guild.members.cache;
+    }
+    let count = 0;
+    for (const [, member] of membersCollection) {
+      if (member.user.bot) continue;
+      if (this.client?.user && member.user.id === this.client.user.id) continue;
+      if (targetRoleId && !member.roles.cache.has(targetRoleId)) continue;
+      count++;
+    }
+    return { total: count };
+  }
+
+  async startBroadcast({ title, message, imageUrl, buttonText, buttonUrl, targetRoleId, delayMs = 1500, createdBy = 'الإدارة' }) {
+    if (!this.client || !this.client.isReady()) {
+      throw new Error('البوت غير متصل حالياً، يرجى تشغيل البوت وربطه بالسيرفر أولاً.');
+    }
+
+    if (this.broadcastState.isRunning) {
+      throw new Error('هناك حملة برودكاست جارية حالياً بالفعل. يرجى انتظار انتهائها أو إيقافها.');
+    }
+
+    const cleanMsg = (message || '').trim();
+    if (!cleanMsg) {
+      throw new Error('نص الرسالة مطلوب ولا يمكن إرسال برودكاست فارغ.');
+    }
+
+    const guild = this.getActiveGuild();
+    if (!guild) {
+      throw new Error('لم يتم العثور على سيرفر المتجر المرتبط.');
+    }
+
+    // جلب أعضاء السيرفر بالكامل
+    let membersCollection;
+    try {
+      membersCollection = await guild.members.fetch();
+    } catch (err) {
+      console.warn('[Broadcast] Error fetching members via gateway, using cache:', err.message);
+      membersCollection = guild.members.cache;
+    }
+
+    const targetMembers = [];
+    for (const [, member] of membersCollection) {
+      if (member.user.bot) continue;
+      if (member.user.id === this.client.user.id) continue;
+      if (targetRoleId && !member.roles.cache.has(targetRoleId)) continue;
+      targetMembers.push(member);
+    }
+
+    if (targetMembers.length === 0) {
+      throw new Error('لم يتم العثور على أي أعضاء مؤهلين للاستلام حسب الفلتر المحدد.');
+    }
+
+    // حفظ الحملة في قاعدة البيانات
+    const res = db.prepare(`
+      INSERT INTO broadcasts (title, message, image_url, button_text, button_url, target_role_id, status, total_count, sent_count, failed_count, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, 'running', ?, 0, 0, ?)
+    `).run(
+      (title || '').trim(),
+      cleanMsg,
+      (imageUrl || '').trim(),
+      (buttonText || '').trim(),
+      (buttonUrl || '').trim(),
+      (targetRoleId || '').trim(),
+      targetMembers.length,
+      createdBy
+    );
+
+    const campaignId = res.lastInsertRowid;
+
+    this.broadcastState = {
+      isRunning: true,
+      campaignId,
+      title: (title || '').trim(),
+      message: cleanMsg,
+      imageUrl: (imageUrl || '').trim(),
+      buttonText: (buttonText || '').trim(),
+      buttonUrl: (buttonUrl || '').trim(),
+      targetRoleId: (targetRoleId || '').trim(),
+      total: targetMembers.length,
+      sent: 0,
+      failed: 0,
+      currentMember: '',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      finishedAt: null
+    };
+
+    this.emitUpdate('broadcast:update', this.getBroadcastStatus());
+
+    // تشغيل الإرسال المتتابع في الخلفية بأمان مع مراعاة قيود الديسكورد
+    (async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const waitTime = Math.max(1000, Number(delayMs) || 1500);
+
+      for (let i = 0; i < targetMembers.length; i++) {
+        if (!this.broadcastState.isRunning) {
+          break;
+        }
+
+        const member = targetMembers[i];
+        const memberTag = member.user.tag || member.user.username;
+        this.broadcastState.currentMember = memberTag;
+
+        // تجهيز محتوى الرسالة
+        const payload = {};
+        const embed = new EmbedBuilder()
+          .setColor('#5865F2')
+          .setDescription(cleanMsg);
+
+        if (title && title.trim()) {
+          embed.setTitle(title.trim());
+        }
+
+        if (imageUrl && imageUrl.trim().startsWith('http')) {
+          embed.setImage(imageUrl.trim());
+        }
+
+        embed.setFooter({
+          text: `${guild.name} • برودكاست رسمي`,
+          iconURL: guild.iconURL({ size: 128 }) || undefined
+        });
+        embed.setTimestamp();
+
+        payload.embeds = [embed];
+
+        if (buttonText && buttonUrl && buttonUrl.trim().startsWith('http')) {
+          payload.components = [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setLabel(buttonText.trim())
+                .setURL(buttonUrl.trim())
+                .setStyle(ButtonStyle.Link)
+            )
+          ];
+        }
+
+        try {
+          await member.send(payload);
+          this.broadcastState.sent++;
+        } catch (sendErr) {
+          this.broadcastState.failed++;
+          if (sendErr.status === 429 || sendErr.code === 429) {
+            const retrySec = sendErr.retry_after || 5;
+            console.warn(`[Broadcast] Rate limit hit, sleeping ${retrySec}s...`);
+            await sleep(retrySec * 1000 + 500);
+          }
+        }
+
+        // تحديث قاعدة البيانات كل 5 أعضاء أو عند آخر عضو
+        if ((i + 1) % 5 === 0 || i === targetMembers.length - 1) {
+          db.prepare(`
+            UPDATE broadcasts
+            SET sent_count = ?, failed_count = ?
+            WHERE id = ?
+          `).run(this.broadcastState.sent, this.broadcastState.failed, campaignId);
+        }
+
+        this.emitUpdate('broadcast:update', this.getBroadcastStatus());
+
+        if (i < targetMembers.length - 1 && this.broadcastState.isRunning) {
+          await sleep(waitTime);
+        }
+      }
+
+      const finalStatus = this.broadcastState.isRunning ? 'completed' : 'stopped';
+      this.broadcastState.isRunning = false;
+      this.broadcastState.status = finalStatus;
+      this.broadcastState.currentMember = '';
+      this.broadcastState.finishedAt = new Date().toISOString();
+
+      db.prepare(`
+        UPDATE broadcasts
+        SET sent_count = ?, failed_count = ?, status = ?, finished_at = datetime('now', 'localtime')
+        WHERE id = ?
+      `).run(this.broadcastState.sent, this.broadcastState.failed, finalStatus, campaignId);
+
+      addActivityLog({
+        type: 'broadcast',
+        title: finalStatus === 'completed' ? 'اكتمل إرسال البرودكاست الجماعي' : 'تم إيقاف البرودكاست',
+        details: `تم الإرسال لـ ${this.broadcastState.sent} عضو بنجاح (تعذر ${this.broadcastState.failed}) من إجمالي ${this.broadcastState.total}`,
+        user_tag: createdBy
+      });
+
+      this.emitUpdate('broadcast:update', this.getBroadcastStatus());
+    })().catch(err => {
+      console.error('[Broadcast] Unhandled loop error:', err);
+      this.broadcastState.isRunning = false;
+      this.broadcastState.status = 'error';
+      this.broadcastState.currentMember = '';
+      this.emitUpdate('broadcast:update', this.getBroadcastStatus());
+    });
+
+    return {
+      ok: true,
+      campaignId,
+      total: targetMembers.length,
+      message: `بدأت حملة البرودكاست لـ ${targetMembers.length} عضواً بنجاح.`
+    };
+  }
+
+  stopBroadcast() {
+    if (!this.broadcastState.isRunning) {
+      return { ok: false, message: 'لا توجد حملة برودكاست قيد الإرسال حالياً.' };
+    }
+    this.broadcastState.isRunning = false;
+    this.broadcastState.status = 'stopped';
+    this.broadcastState.currentMember = '';
+    this.emitUpdate('broadcast:update', this.getBroadcastStatus());
+    return { ok: true, message: 'تم إيقاف حملة البرودكاست بنجاح.' };
   }
 }
 

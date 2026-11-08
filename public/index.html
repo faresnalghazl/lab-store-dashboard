@@ -73,6 +73,10 @@
           <i class="fa-solid fa-user-shield"></i>
           <span>الترحيب والرتب التفاعلية</span>
         </button>
+        <button class="nav-btn" data-view="broadcast">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span>البرودكاست ورسائل الخاص</span>
+        </button>
         <button class="nav-btn" data-view="bot-control">
           <i class="fa-solid fa-robot"></i>
           <span>التحكم بالبوتات والأدوات</span>
@@ -763,7 +767,253 @@
         </section>
 
         <!-- ==========================================
-             7. صفحة التحكم بالبوتات والأدوات الذكية (مع اختيار أكثر من روم للخط التلقائي)
+             7. صفحة البرودكاست ورسائل الخاص للأعضاء (Mass DM)
+             ========================================== -->
+        <section class="view-section" id="view-broadcast">
+          <!-- تنبيه إرشادي -->
+          <div class="card" style="margin-bottom: 20px; border-right: 4px solid #5865F2; background: rgba(88, 101, 242, 0.06);">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(88, 101, 242, 0.2); display: flex; align-items: center; justify-content: center; color: #5865F2; font-size: 20px;">
+                  <i class="fa-solid fa-bullhorn"></i>
+                </div>
+                <div>
+                  <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: #f5f5f2;">نظام البرودكاست المباشر في الخاص (Mass DM)</h4>
+                  <p style="margin: 3px 0 0; font-size: 13px; color: var(--text-muted);">
+                    يتيح لك هذا النظام إرسال رسائل مخصصة في الرسائل الخاصة لجميع أعضاء السيرفر أو لرتبة محددة بتدرج زمني آمن يحمي البوت من قيود الديسكورد.
+                  </p>
+                </div>
+              </div>
+              <div>
+                <span class="badge" id="broadcastGuildMemberBadge" style="background: rgba(255,255,255,0.08); padding: 8px 14px; font-size: 13px;">
+                  <i class="fa-solid fa-users"></i> إجمالي أعضاء السيرفر: <strong id="broadcastTotalGuildMembers">جاري الفحص...</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- شبكة الإعداد والمعاينة -->
+          <div class="grid-2" style="margin-bottom: 24px;">
+            <!-- بطاقة إعداد الرسالة -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                  <span>تجهيز وإرسال رسالة البرودكاست</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>تحديد الفئة المستهدفة</label>
+                <select class="form-control" id="broadcastTargetType" onchange="onBroadcastTargetTypeChange()">
+                  <option value="all" selected>👥 جميع أعضاء السيرفر (باستثناء البوتات)</option>
+                  <option value="role">🏷️ أعضاء يحملون رتبة محددة فقط</option>
+                </select>
+              </div>
+
+              <div class="form-group" id="broadcastRolePickerGroup" style="display: none;">
+                <label>اختر الرتبة المستهدفة</label>
+                <select class="form-control role-select" id="broadcastTargetRole" onchange="updateBroadcastTargetEstimate()">
+                  <option value="">-- اختر الرتبة --</option>
+                </select>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border: 1px dashed var(--border-color); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 13px; color: var(--text-muted);">🎯 العدد المقدر للمستلمين:</span>
+                <span style="font-size: 14px; font-weight: 700; color: var(--accent-emerald);" id="broadcastTargetEstimate">جاري الحساب...</span>
+              </div>
+
+              <div class="form-group">
+                <label>عنوان الرسالة (Embed Title) <span style="color: var(--text-muted); font-size: 11px;">(اختياري)</span></label>
+                <input type="text" class="form-control" id="broadcastTitle" placeholder="مثال: عروض وتخفيضات نهاية الأسبوع في Lab Store 🔥" oninput="updateBroadcastPreview()" />
+              </div>
+
+              <div class="form-group">
+                <label>نص ومحتوى الرسالة (Message Content) <span style="color: var(--accent-rose); font-size: 11px;">* مطلوب</span></label>
+                <textarea class="form-control" id="broadcastMessage" rows="5" placeholder="أهلاً بك عزيزنا العميل! يسعدنا إعلامك بوصول تشكيلة جديدة من المنتجات مع خصم خاص 20%..." oninput="updateBroadcastPreview()"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>رابط صورة أو بنر عريض (Image / Banner URL) <span style="color: var(--text-muted); font-size: 11px;">(اختياري)</span></label>
+                <input type="url" class="form-control" id="broadcastImageUrl" placeholder="https://cdn.discordapp.com/attachments/.../banner.png" oninput="updateBroadcastPreview()" />
+              </div>
+
+              <div class="grid-2" style="margin-bottom: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>نص الزر التفاعلي <span style="color: var(--text-muted); font-size: 11px;">(اختياري)</span></label>
+                  <input type="text" class="form-control" id="broadcastButtonText" placeholder="مثال: 🛒 تصفح المتجر الآن" oninput="updateBroadcastPreview()" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>رابط الزر (Link URL)</label>
+                  <input type="url" class="form-control" id="broadcastButtonUrl" placeholder="https://discord.gg/..." oninput="updateBroadcastPreview()" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>سرعة الإرسال والتدرج الزمني (لحماية البوت من قيود الديسكورد)</label>
+                <select class="form-control" id="broadcastDelay">
+                  <option value="2000">🛡️ آمن جداً (2.0 ثانية لكل عضو - موصى به للسيرفرات الكبيرة)</option>
+                  <option value="1500" selected>⚡ متوازن (1.5 ثانية لكل عضو - مثالي ومستقر)</option>
+                  <option value="1000">🚀 سريع (1.0 ثانية لكل عضو)</option>
+                </select>
+              </div>
+
+              <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button class="btn btn-primary" id="btnStartBroadcast" onclick="startBroadcastCampaign()" style="flex: 2;">
+                  <i class="fa-solid fa-paper-plane"></i> بدء إرسال البرودكاست الآن
+                </button>
+                <button class="btn btn-danger" id="btnStopBroadcast" onclick="stopBroadcastCampaign()" style="flex: 1;" disabled>
+                  <i class="fa-solid fa-stop"></i> إيقاف مؤقت
+                </button>
+              </div>
+            </div>
+
+            <!-- بطاقة المعاينة الحية للديسكورد -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-brands fa-discord"></i>
+                  <span>معاينة الرسالة داخل ديسكورد (Live DM Preview)</span>
+                </div>
+                <span class="badge" style="background: rgba(255,255,255,0.06); font-size: 11px;">تحديث فوري</span>
+              </div>
+
+              <div class="discord-preview-box" style="background: #1e1f22; border-radius: 12px; padding: 18px; border: 1px solid rgba(255,255,255,0.06); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                <!-- رأس رسالة الديسكورد -->
+                <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px;">
+                  <img id="previewBotAvatar" src="/images/logo.png" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" alt="Bot" />
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span id="previewBotName" style="font-weight: 700; color: #f2f3f5; font-size: 15px;">Lab Store System</span>
+                      <span style="background: #5865f2; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px;">BOT</span>
+                      <span style="color: #949ba4; font-size: 12px;">اليوم في 11:30 م</span>
+                    </div>
+                    <div style="color: #dbdee1; font-size: 14px; margin-top: 4px;">
+                      وصلتك رسالة خاصة جديدة من السيرفر:
+                    </div>
+                  </div>
+                </div>
+
+                <!-- الإيمبد -->
+                <div style="margin-right: 52px; background: #2b2d31; border-right: 4px solid #5865F2; border-radius: 4px 8px 8px 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+                  <h4 id="previewEmbedTitle" style="margin: 0; font-size: 16px; font-weight: 700; color: #f2f3f5;">عروض وتخفيضات نهاية الأسبوع 🔥</h4>
+                  <div id="previewEmbedDesc" style="margin: 0; font-size: 14px; line-height: 1.5; color: #dbdee1; white-space: pre-wrap;">أهلاً بك عزيزنا العميل! يسعدنا إعلامك بوصول تشكيلة جديدة من المنتجات مع خصم خاص 20%...</div>
+                  
+                  <img id="previewEmbedImage" src="" style="display: none; width: 100%; border-radius: 6px; margin-top: 6px; object-fit: cover; max-height: 240px;" alt="Banner Preview" />
+
+                  <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 11px; color: #949ba4;">
+                    <img id="previewGuildIcon" src="/images/logo.png" style="width: 18px; height: 18px; border-radius: 50%;" alt="Server" />
+                    <span id="previewGuildName">Lab Store • برودكاست رسمي</span>
+                  </div>
+                </div>
+
+                <!-- الزر التفاعلي أسفل الإيمبد -->
+                <div id="previewButtonWrap" style="margin-right: 52px; margin-top: 10px; display: none;">
+                  <button type="button" class="btn" style="background: #4e5058; color: #fff; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                    <span id="previewButtonText">🛒 تصفح المتجر الآن</span>
+                    <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 11px; opacity: 0.8;"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- لوحة التتبع الحي والتقدم -->
+          <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>متابعة حالة الإرسال وشريط التقدم المباشر</span>
+              </div>
+              <div>
+                <span class="badge" id="broadcastStatusBadge" style="background: rgba(255,255,255,0.08); font-size: 12px; padding: 5px 12px;">متوقف / لا توجد حملة نشطة</span>
+              </div>
+            </div>
+
+            <!-- الكروت الإحصائية الأربعة -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">👥 إجمالي المستهدفين</div>
+                <div style="font-size: 24px; font-weight: 800; color: #f5f5f2;" id="bcastStatTotal">0</div>
+              </div>
+              <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-md); padding: 14px;">
+                <div style="font-size: 12px; color: var(--accent-emerald); margin-bottom: 6px;">✅ تم الإرسال بنجاح</div>
+                <div style="font-size: 24px; font-weight: 800; color: var(--accent-emerald);" id="bcastStatSent">0</div>
+              </div>
+              <div style="background: rgba(244, 63, 94, 0.06); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: var(--radius-md); padding: 14px;">
+                <div style="font-size: 12px; color: var(--accent-rose); margin-bottom: 6px;">⛔ تعذر الإرسال (خاص مقفل)</div>
+                <div style="font-size: 24px; font-weight: 800; color: var(--accent-rose);" id="bcastStatFailed">0</div>
+              </div>
+              <div style="background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 14px;">
+                <div style="font-size: 12px; color: var(--accent-sky); margin-bottom: 6px;">📊 نسبة الإنجاز</div>
+                <div style="font-size: 24px; font-weight: 800; color: var(--accent-sky);" id="bcastStatPercent">0%</div>
+              </div>
+            </div>
+
+            <!-- شريط التقدم الملون -->
+            <div style="margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; font-weight: 600;">
+                <span>مؤشر تقدم الإرسال:</span>
+                <span id="bcastProgressText">0 / 0 عضو</span>
+              </div>
+              <div style="height: 14px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; position: relative;">
+                <div id="bcastProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #5865F2, #10b981); border-radius: 999px; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+
+            <!-- معلومات إضافية سفلية -->
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 10px 14px; border-radius: var(--radius-sm);">
+              <div>
+                <span>👤 العضو الجاري مراسلته الآن: </span>
+                <strong style="color: #f5f5f2;" id="bcastCurrentMember">-</strong>
+              </div>
+              <div>
+                <span>⏱️ وقت البدء: </span>
+                <strong style="color: #f5f5f2;" id="bcastStartTime">-</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- سجل حملات البرودكاست السابقة -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <span>سجل حملات البرودكاست السابقة</span>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="loadBroadcastStatus()">
+                <i class="fa-solid fa-rotate-right"></i> تحديث السجل
+              </button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>العنوان / ملخص الرسالة</th>
+                    <th>المستهدفين</th>
+                    <th>الناجح ✅</th>
+                    <th>المتعذر ⛔</th>
+                    <th>المرسل بواسطة</th>
+                    <th>التاريخ والوقت</th>
+                    <th>الحالة</th>
+                  </tr>
+                </thead>
+                <tbody id="broadcastHistoryTable">
+                  <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                      لا توجد حملات برودكاست مسجلة بعد.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             8. صفحة التحكم بالبوتات والأدوات الذكية (مع اختيار أكثر من روم للخط التلقائي)
              ========================================== -->
         <section class="view-section" id="view-bot-control">
           <div class="grid-equal">

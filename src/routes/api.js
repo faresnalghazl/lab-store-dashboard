@@ -1088,4 +1088,53 @@ router.post('/demo/clear', (req, res) => {
   }
 });
 
+// 12) نظام البرودكاست والرسائل الجماعية في الخاص (Mass DM Broadcast)
+router.get('/broadcast/status', (req, res) => {
+  try {
+    const status = botManager.getBroadcastStatus();
+    res.json({ ok: true, ...status });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+router.get('/broadcast/count', async (req, res) => {
+  try {
+    const targetRoleId = (req.query.role_id || '').trim();
+    const result = await botManager.getBroadcastTargetCount(targetRoleId);
+    res.json({ ok: true, total: result.total });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message, total: 0 });
+  }
+});
+
+router.post('/broadcast/start', async (req, res) => {
+  try {
+    const { title, message, imageUrl, buttonText, buttonUrl, targetRoleId, delayMs } = req.body;
+    const createdBy = req.ownerSession?.username || 'إداري المتجر';
+    const result = await botManager.startBroadcast({
+      title,
+      message,
+      imageUrl,
+      buttonText,
+      buttonUrl,
+      targetRoleId,
+      delayMs,
+      createdBy
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ ok: false, message: err.message });
+  }
+});
+
+router.post('/broadcast/stop', (req, res) => {
+  try {
+    const result = botManager.stopBroadcast();
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ ok: false, message: err.message });
+  }
+});
+
 module.exports = router;

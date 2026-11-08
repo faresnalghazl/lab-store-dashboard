@@ -169,6 +169,23 @@ function initDatabase() {
       is_demo INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
+
+    CREATE TABLE IF NOT EXISTS broadcasts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT DEFAULT '',
+      message TEXT NOT NULL,
+      image_url TEXT DEFAULT '',
+      button_text TEXT DEFAULT '',
+      button_url TEXT DEFAULT '',
+      target_role_id TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      total_count INTEGER DEFAULT 0,
+      sent_count INTEGER DEFAULT 0,
+      failed_count INTEGER DEFAULT 0,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      finished_at TEXT DEFAULT ''
+    );
   `);
 
   // ترقية الجداول الحالية بأمان دون فقدان أي بيانات

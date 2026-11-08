@@ -42,6 +42,10 @@ const viewTitles = {
     title: 'نظام الترحيب والرتب التلقائية والتفاعلية 👋',
     sub: 'تخصيص ترحيب الأعضاء الجدد، الرتبة التلقائية، ولوحات الرتب بالأزرار'
   },
+  'broadcast': {
+    title: 'البرودكاست ورسائل الخاص للأعضاء 📢',
+    sub: 'إرسال رسائل جماعية في الخاص (DM) لجميع أعضاء السيرفر أو رتبة معينة مع تتبع فوري للتقدم'
+  },
   'bot-control': {
     title: 'مركز التحكم بالبوتات والأدوات الذكية 🤖',
     sub: 'ربط التوكن، التحكم بحالة البوتات، الخط التلقائي متعدد الرومات، والرد التلقائي'
@@ -77,6 +81,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentView === 'reviews') loadReviews();
     if (currentView === 'products') loadProducts();
     if (currentView === 'admins') loadAdminsList();
+    if (currentView === 'broadcast') loadBroadcastStatus();
+  });
+
+  socket.on('broadcast:update', data => {
+    if (data && data.active) {
+      renderBroadcastState(data.active, data.history || []);
+    }
   });
 
   socket.on('bot:status', statusInfo => {
@@ -252,6 +263,9 @@ function switchView(viewName) {
   if (viewName === 'welcome-roles') {
     loadSettingsIntoForms();
     loadRolePanels();
+  }
+  if (viewName === 'broadcast') {
+    loadBroadcastView();
   }
   if (viewName === 'bot-control') {
     loadSettingsIntoForms();
@@ -1864,5 +1878,317 @@ async function deleteAdminAction(id, name) {
     await loadAdminsList();
   } else {
     showToast(res.message || 'فشلت الإزالة', 'error');
+  }
+}
+
+// ==========================================
+// وظائف نظام البرودكاست ورسائل الخاص للأعضاء (Mass DM)
+// ==========================================
+
+async function loadBroadcastView() {
+  // مزامنة الرتب وقوائم الاختيار
+  populateDiscordSelectors();
+
+  // تحديث عدد أعضاء السيرفر الكلي
+  const totalGuildMembersEl = document.getElementById('broadcastTotalGuildMembers');
+  if (totalGuildMembersEl) {
+    if (guildMetaCache.guild?.memberCount) {
+      totalGuildMembersEl.textContent = `${guildMetaCache.guild.memberCount} عضو`;
+    } else {
+      totalGuildMembersEl.textContent = '353 عضو';
+    }
+  }
+
+  // تحديث بيانات المعاينة
+  const previewGuildIcon = document.getElementById('previewGuildIcon');
+  const previewGuildName = document.getElementById('previewGuildName');
+  const previewBotAvatar = document.getElementById('previewBotAvatar');
+  const previewBotName = document.getElementById('previewBotName');
+
+  if (previewGuildIcon && guildMetaCache.guild?.icon) {
+    previewGuildIcon.src = guildMetaCache.guild.icon;
+  }
+  if (previewGuildName) {
+    previewGuildName.textContent = `${guildMetaCache.guild?.name || 'Lab Store'} • برودكاست رسمي`;
+  }
+  if (previewBotAvatar && cachedBotStatus?.avatar) {
+    previewBotAvatar.src = cachedBotStatus.avatar;
+  }
+  if (previewBotName && cachedBotStatus?.tag) {
+    previewBotName.textContent = cachedBotStatus.tag.split('#')[0];
+  }
+
+  updateBroadcastPreview();
+  await updateBroadcastTargetEstimate();
+  await loadBroadcastStatus();
+}
+
+function onBroadcastTargetTypeChange() {
+  const type = document.getElementById('broadcastTargetType')?.value || 'all';
+  const roleGroup = document.getElementById('broadcastRolePickerGroup');
+  if (roleGroup) {
+    roleGroup.style.display = type === 'role' ? 'block' : 'none';
+  }
+  updateBroadcastTargetEstimate();
+}
+
+async function updateBroadcastTargetEstimate() {
+  const type = document.getElementById('broadcastTargetType')?.value || 'all';
+  const estimateEl = document.getElementById('broadcastTargetEstimate');
+  if (!estimateEl) return;
+
+  estimateEl.textContent = 'جاري الحساب...';
+
+  let roleId = '';
+  if (type === 'role') {
+    roleId = document.getElementById('broadcastTargetRole')?.value || '';
+    if (!roleId) {
+      estimateEl.textContent = 'يرجى اختيار رتبة أولاً';
+      return;
+    }
+  }
+
+  const res = await apiFetch(`/api/broadcast/count?role_id=${encodeURIComponent(roleId)}`);
+  if (res.ok) {
+    const total = res.total || 0;
+    estimateEl.textContent = `${total.toLocaleString()} عضو مستهدف`;
+  } else {
+    estimateEl.textContent = 'تعذر الحساب';
+  }
+}
+
+function updateBroadcastPreview() {
+  const title = (document.getElementById('broadcastTitle')?.value || '').trim();
+  const msg = (document.getElementById('broadcastMessage')?.value || '').trim();
+  const imgUrl = (document.getElementById('broadcastImageUrl')?.value || '').trim();
+  const btnText = (document.getElementById('broadcastButtonText')?.value || '').trim();
+  const btnUrl = (document.getElementById('broadcastButtonUrl')?.value || '').trim();
+
+  const previewTitle = document.getElementById('previewEmbedTitle');
+  const previewDesc = document.getElementById('previewEmbedDesc');
+  const previewImg = document.getElementById('previewEmbedImage');
+  const previewBtnWrap = document.getElementById('previewButtonWrap');
+  const previewBtnText = document.getElementById('previewButtonText');
+
+  if (previewTitle) {
+    if (title) {
+      previewTitle.style.display = 'block';
+      previewTitle.textContent = title;
+    } else {
+      previewTitle.style.display = 'none';
+    }
+  }
+
+  if (previewDesc) {
+    previewDesc.textContent = msg || 'أهلاً بك عزيزنا العميل! اكتب نص الرسالة لتشاهده يظهر هنا في المعاينة الحية فوراً...';
+  }
+
+  if (previewImg) {
+    if (imgUrl && imgUrl.startsWith('http')) {
+      previewImg.src = imgUrl;
+      previewImg.style.display = 'block';
+    } else {
+      previewImg.style.display = 'none';
+      previewImg.src = '';
+    }
+  }
+
+  if (previewBtnWrap && previewBtnText) {
+    if (btnText && btnUrl && btnUrl.startsWith('http')) {
+      previewBtnText.textContent = btnText;
+      previewBtnWrap.style.display = 'block';
+    } else {
+      previewBtnWrap.style.display = 'none';
+    }
+  }
+}
+
+async function startBroadcastCampaign() {
+  const type = document.getElementById('broadcastTargetType')?.value || 'all';
+  const roleId = type === 'role' ? (document.getElementById('broadcastTargetRole')?.value || '') : '';
+  const title = (document.getElementById('broadcastTitle')?.value || '').trim();
+  const message = (document.getElementById('broadcastMessage')?.value || '').trim();
+  const imageUrl = (document.getElementById('broadcastImageUrl')?.value || '').trim();
+  const buttonText = (document.getElementById('broadcastButtonText')?.value || '').trim();
+  const buttonUrl = (document.getElementById('broadcastButtonUrl')?.value || '').trim();
+  const delayMs = Number(document.getElementById('broadcastDelay')?.value || 1500);
+
+  if (!message) {
+    return showToast('يرجى كتابة نص الرسالة أولاً', 'error');
+  }
+
+  if (type === 'role' && !roleId) {
+    return showToast('يرجى اختيار الرتبة المستهدفة', 'error');
+  }
+
+  if (buttonText && (!buttonUrl || !buttonUrl.startsWith('http'))) {
+    return showToast('يرجى إدخال رابط صالح (يبدأ بـ https://) للزر التفاعلي', 'error');
+  }
+
+  const estimateText = document.getElementById('broadcastTargetEstimate')?.textContent || '';
+  if (!confirm(`هل أنت متأكد من بدء إرسال البرودكاست في الخاص؟\n\nالفئة المستهدفة: ${type === 'all' ? 'جميع أعضاء السيرفر' : 'رتبة محددة'}\nالعدد المقدر: ${estimateText}\n\nسيتم الإرسال بتدرج زمني آمن لحماية البوت.`)) {
+    return;
+  }
+
+  const btnStart = document.getElementById('btnStartBroadcast');
+  const btnStop = document.getElementById('btnStopBroadcast');
+  if (btnStart) btnStart.disabled = true;
+
+  const res = await apiFetch('/api/broadcast/start', {
+    method: 'POST',
+    body: JSON.stringify({
+      title,
+      message,
+      imageUrl,
+      buttonText,
+      buttonUrl,
+      targetRoleId: roleId,
+      delayMs
+    })
+  });
+
+  if (res.ok) {
+    showToast(res.message || 'بدأ إرسال البرودكاست بنجاح!');
+    if (btnStop) btnStop.disabled = false;
+    await loadBroadcastStatus();
+  } else {
+    showToast(res.message || 'فشل بدء البرودكاست', 'error');
+    if (btnStart) btnStart.disabled = false;
+  }
+}
+
+async function stopBroadcastCampaign() {
+  if (!confirm('هل تريد بالتأكيد إيقاف حملة البرودكاست الجارية حالياً؟')) return;
+
+  const res = await apiFetch('/api/broadcast/stop', { method: 'POST' });
+  if (res.ok) {
+    showToast(res.message || 'تم إيقاف البرودكاست');
+    await loadBroadcastStatus();
+  } else {
+    showToast(res.message || 'فشل إيقاف البرودكاست', 'error');
+  }
+}
+
+async function loadBroadcastStatus() {
+  const res = await apiFetch('/api/broadcast/status');
+  if (res.ok) {
+    renderBroadcastState(res.active, res.history || []);
+  }
+}
+
+function renderBroadcastState(active, history) {
+  if (!active) active = {};
+  if (!Array.isArray(history)) history = [];
+
+  const isRunning = Boolean(active.isRunning);
+  const total = Number(active.total || 0);
+  const sent = Number(active.sent || 0);
+  const failed = Number(active.failed || 0);
+  const processed = sent + failed;
+  const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+
+  // تحديث العدادات الإحصائية
+  const statTotal = document.getElementById('bcastStatTotal');
+  const statSent = document.getElementById('bcastStatSent');
+  const statFailed = document.getElementById('bcastStatFailed');
+  const statPercent = document.getElementById('bcastStatPercent');
+  const progressText = document.getElementById('bcastProgressText');
+  const progressBar = document.getElementById('bcastProgressBar');
+  const currentMember = document.getElementById('bcastCurrentMember');
+  const startTime = document.getElementById('bcastStartTime');
+  const statusBadge = document.getElementById('broadcastStatusBadge');
+  const btnStart = document.getElementById('btnStartBroadcast');
+  const btnStop = document.getElementById('btnStopBroadcast');
+
+  if (statTotal) statTotal.textContent = total.toLocaleString();
+  if (statSent) statSent.textContent = sent.toLocaleString();
+  if (statFailed) statFailed.textContent = failed.toLocaleString();
+  if (statPercent) statPercent.textContent = `${percent}%`;
+  if (progressText) progressText.textContent = `${processed.toLocaleString()} / ${total.toLocaleString()} عضو (${percent}%)`;
+  if (progressBar) progressBar.style.width = `${percent}%`;
+
+  if (currentMember) {
+    currentMember.textContent = active.currentMember || (isRunning ? 'جاري التحضير...' : '-');
+  }
+
+  if (startTime) {
+    if (active.startedAt) {
+      const d = new Date(active.startedAt);
+      startTime.textContent = d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } else {
+      startTime.textContent = '-';
+    }
+  }
+
+  if (statusBadge) {
+    if (isRunning) {
+      statusBadge.style.background = 'rgba(88, 101, 242, 0.2)';
+      statusBadge.style.color = '#5865F2';
+      statusBadge.style.border = '1px solid rgba(88, 101, 242, 0.4)';
+      statusBadge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري إرسال البرودكاست في الخاص...';
+    } else if (active.status === 'completed') {
+      statusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+      statusBadge.style.color = 'var(--accent-emerald)';
+      statusBadge.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      statusBadge.innerHTML = '<i class="fa-solid fa-check"></i> اكتمل الإرسال بنجاح';
+    } else if (active.status === 'stopped') {
+      statusBadge.style.background = 'rgba(244, 63, 94, 0.15)';
+      statusBadge.style.color = 'var(--accent-rose)';
+      statusBadge.style.border = '1px solid rgba(244, 63, 94, 0.3)';
+      statusBadge.innerHTML = '<i class="fa-solid fa-stop"></i> تم إيقاف الحملة';
+    } else {
+      statusBadge.style.background = 'rgba(255, 255, 255, 0.08)';
+      statusBadge.style.color = 'var(--text-muted)';
+      statusBadge.style.border = 'none';
+      statusBadge.innerHTML = 'متوقف / لا توجد حملة نشطة';
+    }
+  }
+
+  if (btnStart) btnStart.disabled = isRunning;
+  if (btnStop) btnStop.disabled = !isRunning;
+
+  // رسم جدول الحملات السابقة
+  const tbody = document.getElementById('broadcastHistoryTable');
+  if (tbody) {
+    if (history.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+            لا توجد حملات برودكاست مسجلة بعد.
+          </td>
+        </tr>
+      `;
+    } else {
+      tbody.innerHTML = history.map(h => {
+        let statusBadgeHtml = '';
+        if (h.status === 'running') {
+          statusBadgeHtml = '<span class="badge" style="background: rgba(88,101,242,0.2); color: #5865F2;"><i class="fa-solid fa-spinner fa-spin"></i> جاري الإرسال</span>';
+        } else if (h.status === 'completed') {
+          statusBadgeHtml = '<span class="badge" style="background: rgba(16,185,129,0.15); color: var(--accent-emerald);">✅ مكتمل</span>';
+        } else if (h.status === 'stopped') {
+          statusBadgeHtml = '<span class="badge" style="background: rgba(244,63,94,0.15); color: var(--accent-rose);">⏹️ تم الإيقاف</span>';
+        } else {
+          statusBadgeHtml = `<span class="badge">${h.status}</span>`;
+        }
+
+        const msgSnippet = (h.title ? `<strong>${escapeHtml(h.title)}</strong><br/>` : '') +
+          `<span style="color: var(--text-muted); font-size: 12px;">${escapeHtml((h.message || '').slice(0, 60))}${h.message?.length > 60 ? '...' : ''}</span>`;
+
+        const targetDesc = h.target_role_id ? '🏷️ رتبة محددة' : '👥 جميع الأعضاء';
+
+        return `
+          <tr>
+            <td>#${h.id}</td>
+            <td>${msgSnippet}</td>
+            <td>${targetDesc} (${Number(h.total_count || 0).toLocaleString()})</td>
+            <td style="color: var(--accent-emerald); font-weight: 700;">${Number(h.sent_count || 0).toLocaleString()}</td>
+            <td style="color: var(--accent-rose); font-weight: 700;">${Number(h.failed_count || 0).toLocaleString()}</td>
+            <td>${escapeHtml(h.created_by || 'الإدارة')}</td>
+            <td style="font-size: 12px; color: var(--text-muted);">${h.created_at || '-'}</td>
+            <td>${statusBadgeHtml}</td>
+          </tr>
+        `;
+      }).join('');
+    }
   }
 }
