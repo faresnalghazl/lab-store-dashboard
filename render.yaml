@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: lab-store-dashboard
+    runtime: docker
+    plan: free
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: OWNER_DISCORD_ID
+        value: "790676969418522664"
